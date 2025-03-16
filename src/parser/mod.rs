@@ -2,7 +2,7 @@ use core::fmt;
 use std::collections::HashMap;
 
 use crate::{
-    ast::{Expression, ExpressionStatement, Identifier, IntegerLiteral, Let, Program, Return, Statement},
+    ast::*,
     lexer::Lexer,
     token::{Token, TokenType},
 };
@@ -32,6 +32,7 @@ pub struct Parser<'a> {
 enum ParserError {
     UnknownError,
     UnexpectedToken(String),
+    ParseExpressionFail
 }
 
 impl fmt::Display for ParserError {
@@ -40,7 +41,8 @@ impl fmt::Display for ParserError {
             ParserError::UnknownError => write!(f, "Unknown error occurred"),
             ParserError::UnexpectedToken(token) => {
                 write!(f, "Unexpected token encountered: {}", token)
-            }
+            },
+            ParserError::ParseExpressionFail => write!(f, "Failed to parse expression")
         }
     }
 }
@@ -57,6 +59,8 @@ impl<'a> Parser<'a> {
 
         parser.register_prefix(TokenType::Identifier, |p| p.parse_identifier());
         parser.register_prefix(TokenType::Int, |p| p.parse_integer_literal());
+        parser.register_prefix(TokenType::Bang, |p| p.parse_prefix_expression());
+        parser.register_prefix(TokenType::Minus, |p| p.parse_prefix_expression());
 
         // eat two tokens so the current_token and peek_token get set correctly
         parser.next_token();
@@ -89,7 +93,7 @@ impl<'a> Parser<'a> {
         ))
     }
 
-    pub fn parse_let_statement(&mut self) -> Result<Statement, ParserError> {
+    fn parse_let_statement(&mut self) -> Result<Statement, ParserError> {
         let let_token = self.current_token.clone();
 
         if let Err(e) = self.expect_peek(TokenType::Identifier) {
@@ -142,7 +146,24 @@ impl<'a> Parser<'a> {
         if let Some(prefix_parse) = self.prefix_parse_fns.get(&self.current_token.kind) {
             return Ok(*prefix_parse(self));
         }
-        Err(ParserError::UnknownError)
+        Err(ParserError::ParseExpressionFail)
+    }
+
+    fn parse_prefix_expression(&mut self) -> Box<Expression> {
+        let token = self.current_token.clone();
+        let operator = self.current_token.literal.clone();
+
+        self.next_token();
+
+        let right = self.parse_expression(OperatorPrecedence::Prefix).unwrap();
+
+        let expression = PrefixExpression {
+            token,
+            operator,
+            right: Box::new(right)
+        };
+
+        Box::new(Expression::PrefixExpression(expression))
     }
 
     fn parse_identifier(&mut self) -> Box<Expression> {
@@ -184,7 +205,7 @@ impl<'a> Parser<'a> {
         Ok(Statement::Expression(expr_statement))
     }
 
-    pub fn parse_statement(&mut self) -> Result<Statement, ParserError> {
+    fn parse_statement(&mut self) -> Result<Statement, ParserError> {
         match self.current_token.kind {
             TokenType::Let => self.parse_let_statement(),
             TokenType::Return => self.parse_return_statement(),

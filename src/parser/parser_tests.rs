@@ -1,4 +1,8 @@
-use crate::{ast::{Expression, Statement}, lexer::Lexer, parser::Parser};
+use crate::{
+    ast::{Expression, Statement},
+    lexer::Lexer,
+    parser::Parser,
+};
 
 fn test_let_statement(statement: &Statement, expected_id: &str) {
     if let Statement::Let(s) = statement {
@@ -23,11 +27,7 @@ fn test_let_statements() {
     let program = parser.parse_program();
     assert_eq!(program.statements.len(), 3);
 
-    let tests = [
-        "x",
-        "y",
-        "foobar"
-    ];
+    let tests = ["x", "y", "foobar"];
 
     for (i, test) in tests.iter().enumerate() {
         test_let_statement(&program.statements[i], test);
@@ -71,6 +71,8 @@ fn test_identifier_expression() {
 
         if let Expression::Identifier(id) = &*es.expression {
             assert_eq!(id.value, "foobar");
+        } else {
+            panic!("Invalid Identifier")
         }
     } else {
         panic!("Invalid ExpressionStatement");
@@ -84,7 +86,7 @@ fn test_integer_literal_expression() {
     let mut lexer = Lexer::new(input.into());
     let mut parser = Parser::new(&mut lexer);
     let program = parser.parse_program();
-    
+
     assert_eq!(program.statements.len(), 1);
 
     if let Statement::Expression(es) = &program.statements[0] {
@@ -92,42 +94,106 @@ fn test_integer_literal_expression() {
 
         if let Expression::Integer(id) = &*es.expression {
             assert_eq!(id.value, 5);
+        } else {
+
+            panic!("Invalid IntegerLiteral");
         }
     } else {
-        panic!("Invalid IntegerLiteral");
+        panic!("Invalid ExpressionStatement");
     }
 }
 
-// func TestLetStatements(t *testing.T) {
-// 	tests := []struct {
-// 		input              string
-// 		expectedIdentifier string
-// 		expectedValue      interface{}
-// 	}{
-// 		{"let x = 5;", "x", 5},
-// 		{"let y = true;", "y", true},
-// 		{"let foobar = y;", "foobar", "y"},
-// 	}
+#[derive(Debug)]
+enum PrefixTestValue {
+    Int(i64),
+    // String(String),
+    // Bool(bool),
+}
 
-// 	for _, tt := range tests {
-// 		l := lexer.New(tt.input)
-// 		p := New(l)
-// 		program := p.ParseProgram()
-// 		checkParserErrors(t, p)
+fn test_integer_literal(expression: &Expression, expected: i64) {
+    if let Expression::Integer(num) = expression {
+        assert_eq!(num.value, expected);
+        assert_eq!(num.token.literal, expected.to_string());
+    } else {
+        panic!("not an IntegerLiteral");
+    }
+}
 
-// 		if len(program.Statements) != 1 {
-// 			t.Fatalf("program.Statements does not contain 1 statements. got=%d",
-// 				len(program.Statements))
-// 		}
-
-// 		stmt := program.Statements[0]
-// 		if !testLetStatement(t, stmt, tt.expectedIdentifier) {
-// 			return
-// 		}
-
-// 		val := stmt.(*ast.LetStatement).Value
-// 		if !testLiteralExpression(t, val, tt.expectedValue) {
-// 			return
-// 		}
-// 	}
+// fn test_identifier(expression: &Expression, expected: String) {
+//     if let Expression::Identifier(id) = expression {
+//         assert_eq!(id.value, expected);
+//         assert_eq!(id.token.literal, expected);
+//     } else {
+//         panic!("not an Identifier");
+//     }
 // }
+
+// fn test_boolean_literal(expression: &Expression, expected: bool) {
+//     if let Expression::Boolean(id) = expression {
+//         assert_eq!(id.value, expected);
+//         assert_eq!(id.token.literal, expected);
+//     } else {
+//         panic!("not an Identifier");
+//     }
+// }
+
+fn test_literal_expression(expression: &Expression, expected: PrefixTestValue) {
+    match expected {
+        PrefixTestValue::Int(i) => test_integer_literal(expression, i),
+        // PrefixTestValue::String(s) => test_identifier(expression, s),
+        // PrefixTestValue::Bool(b) => test_boolean_literal(expression, b),
+    }
+}
+
+#[test]
+fn test_prefix_expressions() {
+    let tests_cases: [(String, String, PrefixTestValue); 2] = [
+        ("!5;".to_string(), "!".to_string(), PrefixTestValue::Int(5)),
+        (
+            "-15;".to_string(),
+            "-".to_string(),
+            PrefixTestValue::Int(15),
+        ),
+        // (
+        //     "!foobar;".to_string(),
+        //     "!".to_string(),
+        //     PrefixTestValue::String("foobar".to_string()),
+        // ),
+        // (
+        //     "-foobar;".to_string(),
+        //     "-".to_string(),
+        //     PrefixTestValue::String("foobar".to_string()),
+        // ),
+        // (
+        //     "!true;".to_string(),
+        //     "!".to_string(),
+        //     PrefixTestValue::Bool(true),
+        // ),
+        // (
+        //     "!false;".to_string(),
+        //     "!".to_string(),
+        //     PrefixTestValue::Bool(false),
+        // ),
+    ];
+
+    for (input, operator, value) in tests_cases {
+        let mut lexer = Lexer::new(input);
+        let mut parser = Parser::new(&mut lexer);
+        let program = parser.parse_program();
+
+        assert_eq!(program.statements.len(), 1);
+
+        if let Statement::Expression(es) = &program.statements[0] {
+            assert_eq!(es.token.literal, operator);
+    
+            if let Expression::PrefixExpression(pe) = &*es.expression {
+                assert_eq!(pe.operator, operator);
+                test_literal_expression(&*pe.right, value);
+            } else {
+                panic!("Invalid PrefixExpression");
+            }
+        } else {
+            panic!("Invalid ExpressionStatement");
+        }
+    }
+}
