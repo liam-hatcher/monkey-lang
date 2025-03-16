@@ -1,9 +1,11 @@
 use crate::token::Token;
 
-// I might not need this Node enum at all
-pub enum Node {
-    Statement(Statement),
-    Expression(Expression),
+
+
+#[derive(Debug)]
+pub struct Identifier {
+    pub token: Token,
+    pub value: String
 }
 
 #[derive(Debug)]
@@ -20,19 +22,26 @@ pub struct Return {
 }
 
 #[derive(Debug)]
-pub struct Identifier {
+pub enum Expression {
+    Identifier(Identifier)
+}
+
+#[derive(Debug)]
+pub struct ExpressionStatement {
     pub token: Token,
-    pub value: String
+    pub expression: Box<Expression> 
 }
 
 #[derive(Debug)]
 pub enum Statement {
     Let(Let),
-    Return(Return)
-}
+    Return(Return),
 
-pub enum Expression {
-    Identifier(Identifier)
+    // The most basic kind of expression is a statement
+    // e.g.
+    // x + 10; 
+    // foobar;
+    Expression(ExpressionStatement)
 }
 
 pub struct Program {

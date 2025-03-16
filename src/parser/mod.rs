@@ -1,16 +1,31 @@
 use core::fmt;
+use std::collections::HashMap;
 
 use crate::{
-    ast::{Identifier, Let, Program, Return, Statement},
+    ast::{Expression, ExpressionStatement, Identifier, Let, Program, Return, Statement},
     lexer::Lexer,
     token::{Token, TokenType},
 };
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Copy, Clone)]
+pub enum OperatorPrecedence {
+    Lowest,
+    Equals,      // ==
+    LessGreater, // > or <
+    Sum,         // +
+    Product,     // *
+    Prefix,      // -X or !X
+    Call,        // myFunction(X)
+}
+
+type PrefixParseFn = fn(&mut Parser) -> Box<Expression>;
 
 pub struct Parser<'a> {
     lexer: &'a mut Lexer,
     current_token: Token,
     peek_token: Token,
     // errors: Vec<ParserError>
+    prefix_parse_fns: HashMap<TokenType, PrefixParseFn>,
 }
 
 #[derive(Debug)]
@@ -23,7 +38,9 @@ impl fmt::Display for ParserError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ParserError::UnknownError => write!(f, "Unknown error occurred"),
-            ParserError::UnexpectedToken(token) => write!(f, "Unexpected token encountered: {}", token),
+            ParserError::UnexpectedToken(token) => {
+                write!(f, "Unexpected token encountered: {}", token)
+            }
         }
     }
 }
@@ -35,13 +52,20 @@ impl<'a> Parser<'a> {
             current_token: Token::default(),
             peek_token: Token::default(),
             // errors: Vec::default(),
+            prefix_parse_fns: HashMap::new(),
         };
+
+        parser.register_prefix(TokenType::Identifier, |p| p.parse_identifier());
 
         // eat two tokens so the current_token and peek_token get set correctly
         parser.next_token();
         parser.next_token();
 
         parser
+    }
+
+    fn register_prefix(&mut self, token_type: TokenType, func: PrefixParseFn) {
+        self.prefix_parse_fns.insert(token_type, func);
     }
 
     pub fn next_token(&mut self) {
@@ -59,7 +83,9 @@ impl<'a> Parser<'a> {
             return Ok(());
         }
 
-        Err(ParserError::UnexpectedToken(self.peek_token.literal.clone()))
+        Err(ParserError::UnexpectedToken(
+            self.peek_token.literal.clone(),
+        ))
     }
 
     pub fn parse_let_statement(&mut self) -> Result<Statement, ParserError> {
@@ -103,18 +129,52 @@ impl<'a> Parser<'a> {
             self.next_token();
         }
 
-        let statement = Return {
-            token
-        };
+        let statement = Return { token };
 
         Ok(Statement::Return(statement))
+    }
+
+    fn parse_expression(
+        &mut self,
+        precedence: OperatorPrecedence,
+    ) -> Result<Expression, ParserError> {
+        if let Some(prefix_parse) = self.prefix_parse_fns.get(&self.current_token.kind) {
+            return Ok(*prefix_parse(self));
+        }
+        Err(ParserError::UnknownError)
+    }
+
+    fn parse_identifier(&mut self) -> Box<Expression> {
+        let id = Expression::Identifier(Identifier {
+            token: self.current_token.clone(),
+            value: self.current_token.literal.clone(),
+        });
+
+        Box::new(id)
+    }
+
+    fn parse_expression_statement(&mut self) -> Result<Statement, ParserError> {
+        let token = self.current_token.clone();
+
+        let expression = self.parse_expression(OperatorPrecedence::Lowest).unwrap();
+
+        if self.peek_token.kind == TokenType::Semicolon {
+            self.next_token();
+        }
+
+        let expr_statement = ExpressionStatement {
+            token,
+            expression: Box::new(expression),
+        };
+
+        Ok(Statement::Expression(expr_statement))
     }
 
     pub fn parse_statement(&mut self) -> Result<Statement, ParserError> {
         match self.current_token.kind {
             TokenType::Let => self.parse_let_statement(),
             TokenType::Return => self.parse_return_statement(),
-            _ => Err(ParserError::UnknownError), // should not happen
+            _ => self.parse_expression_statement(),
         }
     }
 

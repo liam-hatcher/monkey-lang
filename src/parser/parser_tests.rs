@@ -1,4 +1,4 @@
-use crate::{ast::Statement, lexer::Lexer, parser::Parser};
+use crate::{ast::{Expression, ExpressionStatement, Statement}, lexer::Lexer, parser::Parser};
 
 fn test_let_statement(statement: &Statement, expected_id: &str) {
     if let Statement::Let(s) = statement {
@@ -56,6 +56,24 @@ fn test_return_statements() {
         }
     }
 }
+
+#[test]
+fn test_identifier_expression() {
+    let input = "foobar;";
+
+    let mut lexer = Lexer::new(input.into());
+    let mut parser = Parser::new(&mut lexer);
+    let program = parser.parse_program();
+
+    assert_eq!(program.statements.len(), 1);
+    if let Statement::Expression(es) = &program.statements[0] {
+        assert_eq!(es.token.literal, "foobar");
+
+        let Expression::Identifier(id) = &*es.expression;
+        assert_eq!(id.value, "foobar");
+    }
+}
+
 
 // func TestLetStatements(t *testing.T) {
 // 	tests := []struct {
