@@ -1,5 +1,5 @@
 use core::fmt;
-use std::collections::HashMap;
+use std::{cell::RefCell, collections::HashMap, mem};
 
 use crate::{
     ast::*,
@@ -19,6 +19,7 @@ pub enum OperatorPrecedence {
 }
 
 type PrefixParseFn = fn(&mut Parser) -> Box<Expression>;
+type InfixParseFn = fn(&mut Parser, Box<Expression>) -> Box<Expression>;
 
 pub struct Parser<'a> {
     lexer: &'a mut Lexer,
@@ -26,23 +27,24 @@ pub struct Parser<'a> {
     peek_token: Token,
     // errors: Vec<ParserError>
     prefix_parse_fns: HashMap<TokenType, PrefixParseFn>,
+    infix_parse_fns: RefCell<HashMap<TokenType, InfixParseFn>>,
 }
 
 #[derive(Debug)]
 enum ParserError {
     UnknownError,
     UnexpectedToken(String),
-    ParseExpressionFail
+    ParseExpressionFail,
 }
 
 impl fmt::Display for ParserError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ParserError::UnknownError => write!(f, "Unknown error occurred"),
             ParserError::UnexpectedToken(token) => {
                 write!(f, "Unexpected token encountered: {}", token)
-            },
-            ParserError::ParseExpressionFail => write!(f, "Failed to parse expression")
+            }
+            ParserError::ParseExpressionFail => write!(f, "Failed to parse expression"),
+            ParserError::UnknownError => write!(f, "Unknown error occurred"),
         }
     }
 }
@@ -55,12 +57,22 @@ impl<'a> Parser<'a> {
             peek_token: Token::default(),
             // errors: Vec::default(),
             prefix_parse_fns: HashMap::new(),
+            infix_parse_fns: RefCell::new(HashMap::new()),
         };
 
         parser.register_prefix(TokenType::Identifier, |p| p.parse_identifier());
         parser.register_prefix(TokenType::Int, |p| p.parse_integer_literal());
         parser.register_prefix(TokenType::Bang, |p| p.parse_prefix_expression());
         parser.register_prefix(TokenType::Minus, |p| p.parse_prefix_expression());
+
+        parser.register_infix(TokenType::Plus, |p, ex| p.parse_infix_expression(ex));
+        parser.register_infix(TokenType::Minus, |p, ex| p.parse_infix_expression(ex));
+        parser.register_infix(TokenType::Slash, |p, ex| p.parse_infix_expression(ex));
+        parser.register_infix(TokenType::Asterisk, |p, ex| p.parse_infix_expression(ex));
+        parser.register_infix(TokenType::Equal, |p, ex| p.parse_infix_expression(ex));
+        parser.register_infix(TokenType::NotEqual, |p, ex| p.parse_infix_expression(ex));
+        parser.register_infix(TokenType::LT, |p, ex| p.parse_infix_expression(ex));
+        parser.register_infix(TokenType::GT, |p, ex| p.parse_infix_expression(ex));
 
         // eat two tokens so the current_token and peek_token get set correctly
         parser.next_token();
@@ -71,6 +83,40 @@ impl<'a> Parser<'a> {
 
     fn register_prefix(&mut self, token_type: TokenType, func: PrefixParseFn) {
         self.prefix_parse_fns.insert(token_type, func);
+    }
+
+    fn register_infix(&mut self, token_type: TokenType, func: InfixParseFn) {
+        self.infix_parse_fns.borrow_mut().insert(token_type, func);
+    }
+
+    fn get_precedence(&self, tt: &TokenType) -> Option<OperatorPrecedence> {
+        match tt {
+            TokenType::Equal | TokenType::NotEqual => Some(OperatorPrecedence::Equals),
+            TokenType::LT | TokenType::GT => Some(OperatorPrecedence::LessGreater),
+            TokenType::Plus | TokenType::Minus => Some(OperatorPrecedence::Sum),
+            TokenType::Slash | TokenType::Asterisk => Some(OperatorPrecedence::Product),
+            _ => None,
+        }
+    }
+
+    fn peek_precedence(&self) -> OperatorPrecedence {
+        let precedence = self.get_precedence(&self.peek_token.kind);
+
+        if precedence.is_some() {
+            precedence.unwrap()
+        } else {
+            OperatorPrecedence::Lowest
+        }
+    }
+
+    fn current_precedence(&self) -> OperatorPrecedence {
+        let precedence = self.get_precedence(&self.current_token.kind);
+
+        if precedence.is_some() {
+            precedence.unwrap()
+        } else {
+            OperatorPrecedence::Lowest
+        }
     }
 
     pub fn next_token(&mut self) {
@@ -143,10 +189,29 @@ impl<'a> Parser<'a> {
         &mut self,
         precedence: OperatorPrecedence,
     ) -> Result<Expression, ParserError> {
-        if let Some(prefix_parse) = self.prefix_parse_fns.get(&self.current_token.kind) {
-            return Ok(*prefix_parse(self));
+        let prefix = self.prefix_parse_fns.get(&self.current_token.kind);
+
+        if prefix.is_none() {
+            return Err(ParserError::ParseExpressionFail); // should be impossible
         }
-        Err(ParserError::ParseExpressionFail)
+
+        let mut left = prefix.unwrap()(self);
+
+        while self.peek_token.kind != TokenType::Semicolon && precedence < self.peek_precedence() {
+            let infix = {
+                let infix_fns = self.infix_parse_fns.borrow(); // Borrow immutably
+                infix_fns.get(&self.peek_token.kind).cloned() // Retrieve the function, cloned to return by value
+            };
+
+            if let Some(infix) = infix {
+                self.next_token();
+                left = infix(self, left);
+            } else {
+                return Ok(*left);
+            }
+        }
+
+        return Ok(*left);
     }
 
     fn parse_prefix_expression(&mut self) -> Box<Expression> {
@@ -160,10 +225,30 @@ impl<'a> Parser<'a> {
         let expression = PrefixExpression {
             token,
             operator,
+            right: Box::new(right),
+        };
+
+        Box::new(Expression::Prefix(expression))
+    }
+
+    fn parse_infix_expression(&mut self, left: Box<Expression>) -> Box<Expression> {
+        let token = self.current_token.clone();
+        let operator = self.current_token.literal.clone();
+        
+        let precedence = self.current_precedence();
+
+        self.next_token();
+
+        let right = self.parse_expression(precedence).unwrap();
+
+        let expression = InfixExpression {
+            token,
+            operator,
+            left,
             right: Box::new(right)
         };
 
-        Box::new(Expression::PrefixExpression(expression))
+        Box::new(Expression::Infix(expression))
     }
 
     fn parse_identifier(&mut self) -> Box<Expression> {
@@ -181,7 +266,7 @@ impl<'a> Parser<'a> {
         if let Ok(int_literal) = value {
             Box::new(Expression::Integer(IntegerLiteral {
                 token: self.current_token.clone(),
-                value: int_literal
+                value: int_literal,
             }))
         } else {
             panic!("Integer parse failed!");
