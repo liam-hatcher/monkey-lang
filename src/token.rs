@@ -26,7 +26,7 @@ pub enum TokenType {
     Else,
     Return,
     Equal,
-    NotEqual
+    NotEqual,
 }
 
 #[derive(Debug, Clone)]
@@ -39,7 +39,16 @@ impl Token {
     pub fn new(kind: TokenType, literal: String) -> Self {
         Self {
             kind,
-            literal: literal.into(),
+            literal: literal,
+        }
+    }
+}
+
+impl Default for Token {
+    fn default() -> Self {
+        Self {
+            kind: TokenType::EOF,
+            literal: String::new()
         }
     }
 }
@@ -53,6 +62,6 @@ pub fn lookup_identifier(identifier: &str) -> TokenType {
         "if" => TokenType::If,
         "else" => TokenType::Else,
         "return" => TokenType::Return,
-        _ => TokenType::Identifier
+        _ => TokenType::Identifier,
     }
 }

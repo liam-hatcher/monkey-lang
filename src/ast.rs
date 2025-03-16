@@ -1,32 +1,41 @@
 use crate::token::Token;
 
 // I might not need this Node enum at all
-pub enum Node<'a> {
-    Statement(Statement<'a>),
-    Expression(Expression<'a>),
+pub enum Node {
+    Statement(Statement),
+    Expression(Expression),
 }
 
-
-pub struct Let<'a> {
-    token: Token,
-    id: Identifier<'a>,
-    value: Expression<'a>,
+#[derive(Debug)]
+pub struct Let {
+    pub token: Token,
+    pub id: Identifier,
+    // pub value: Expression, // TODO
 }
 
-pub struct Identifier<'a> {
-    token: Token,
-    value: &'a str
+#[derive(Debug)]
+pub struct Return {
+    pub token: Token,
+    // pub value: Expression // todo
 }
 
-pub enum Statement<'a> {
-    Let(Let<'a>)
+#[derive(Debug)]
+pub struct Identifier {
+    pub token: Token,
+    pub value: String
 }
 
-pub enum Expression<'a> {
-    Identifier(Identifier<'a>)
+#[derive(Debug)]
+pub enum Statement {
+    Let(Let),
+    Return(Return)
 }
 
-pub struct Program<'a> {
-    statements: Vec<Statement<'a>>
+pub enum Expression {
+    Identifier(Identifier)
+}
+
+pub struct Program {
+    pub statements: Vec<Statement>
 }
 
