@@ -2,7 +2,7 @@ use core::fmt;
 use std::collections::HashMap;
 
 use crate::{
-    ast::{Expression, ExpressionStatement, Identifier, Let, Program, Return, Statement},
+    ast::{Expression, ExpressionStatement, Identifier, IntegerLiteral, Let, Program, Return, Statement},
     lexer::Lexer,
     token::{Token, TokenType},
 };
@@ -56,6 +56,7 @@ impl<'a> Parser<'a> {
         };
 
         parser.register_prefix(TokenType::Identifier, |p| p.parse_identifier());
+        parser.register_prefix(TokenType::Int, |p| p.parse_integer_literal());
 
         // eat two tokens so the current_token and peek_token get set correctly
         parser.next_token();
@@ -151,6 +152,19 @@ impl<'a> Parser<'a> {
         });
 
         Box::new(id)
+    }
+
+    fn parse_integer_literal(&mut self) -> Box<Expression> {
+        let value = self.current_token.literal.clone().parse::<i64>();
+
+        if let Ok(int_literal) = value {
+            Box::new(Expression::Integer(IntegerLiteral {
+                token: self.current_token.clone(),
+                value: int_literal
+            }))
+        } else {
+            panic!("Integer parse failed!");
+        }
     }
 
     fn parse_expression_statement(&mut self) -> Result<Statement, ParserError> {

@@ -22,8 +22,15 @@ pub struct Return {
 }
 
 #[derive(Debug)]
+pub struct IntegerLiteral {
+    pub token: Token,
+    pub value: i64
+}
+
+#[derive(Debug)]
 pub enum Expression {
-    Identifier(Identifier)
+    Identifier(Identifier),
+    Integer(IntegerLiteral)
 }
 
 #[derive(Debug)]
