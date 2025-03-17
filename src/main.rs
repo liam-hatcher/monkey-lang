@@ -9,11 +9,13 @@ use parser::Parser;
 use repl::start_repl;
 
 fn main() {
-    let input = "";
+    let input = "3 + 4 * 5 == 3 * 1 + 4 * 5";
     let mut l = Lexer::new(input.into());
     let mut p = Parser::new(&mut l);
 
-    p.parse_program();
+    let prog = p.parse_program();
+
+    println!("CHECK IT {:?}", prog.to_string());
 
     start_repl();
 }

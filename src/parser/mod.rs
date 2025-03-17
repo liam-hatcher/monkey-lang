@@ -1,5 +1,5 @@
 use core::fmt;
-use std::{cell::RefCell, collections::HashMap, mem};
+use std::{cell::RefCell, collections::HashMap};
 
 use crate::{
     ast::*,
@@ -25,8 +25,8 @@ pub struct Parser<'a> {
     lexer: &'a mut Lexer,
     current_token: Token,
     peek_token: Token,
-    // errors: Vec<ParserError>
     prefix_parse_fns: HashMap<TokenType, PrefixParseFn>,
+    // This seems like a hack, but i'm a n00b so ¯\_(ツ)_/¯
     infix_parse_fns: RefCell<HashMap<TokenType, InfixParseFn>>,
 }
 
@@ -64,6 +64,10 @@ impl<'a> Parser<'a> {
         parser.register_prefix(TokenType::Int, |p| p.parse_integer_literal());
         parser.register_prefix(TokenType::Bang, |p| p.parse_prefix_expression());
         parser.register_prefix(TokenType::Minus, |p| p.parse_prefix_expression());
+        parser.register_prefix(TokenType::True, |p| p.parse_boolean());
+        parser.register_prefix(TokenType::False, |p| p.parse_boolean());
+        parser.register_prefix(TokenType::LParen, |p| p.parse_grouped_expression());
+        parser.register_prefix(TokenType::If, |p| p.parse_if_expression());
 
         parser.register_infix(TokenType::Plus, |p, ex| p.parse_infix_expression(ex));
         parser.register_infix(TokenType::Minus, |p, ex| p.parse_infix_expression(ex));
@@ -185,35 +189,6 @@ impl<'a> Parser<'a> {
         Ok(Statement::Return(statement))
     }
 
-    fn parse_expression(
-        &mut self,
-        precedence: OperatorPrecedence,
-    ) -> Result<Expression, ParserError> {
-        let prefix = self.prefix_parse_fns.get(&self.current_token.kind);
-
-        if prefix.is_none() {
-            return Err(ParserError::ParseExpressionFail); // should be impossible
-        }
-
-        let mut left = prefix.unwrap()(self);
-
-        while self.peek_token.kind != TokenType::Semicolon && precedence < self.peek_precedence() {
-            let infix = {
-                let infix_fns = self.infix_parse_fns.borrow(); // Borrow immutably
-                infix_fns.get(&self.peek_token.kind).cloned() // Retrieve the function, cloned to return by value
-            };
-
-            if let Some(infix) = infix {
-                self.next_token();
-                left = infix(self, left);
-            } else {
-                return Ok(*left);
-            }
-        }
-
-        return Ok(*left);
-    }
-
     fn parse_prefix_expression(&mut self) -> Box<Expression> {
         let token = self.current_token.clone();
         let operator = self.current_token.literal.clone();
@@ -229,26 +204,6 @@ impl<'a> Parser<'a> {
         };
 
         Box::new(Expression::Prefix(expression))
-    }
-
-    fn parse_infix_expression(&mut self, left: Box<Expression>) -> Box<Expression> {
-        let token = self.current_token.clone();
-        let operator = self.current_token.literal.clone();
-        
-        let precedence = self.current_precedence();
-
-        self.next_token();
-
-        let right = self.parse_expression(precedence).unwrap();
-
-        let expression = InfixExpression {
-            token,
-            operator,
-            left,
-            right: Box::new(right)
-        };
-
-        Box::new(Expression::Infix(expression))
     }
 
     fn parse_identifier(&mut self) -> Box<Expression> {
@@ -271,6 +226,149 @@ impl<'a> Parser<'a> {
         } else {
             panic!("Integer parse failed!");
         }
+    }
+
+    fn parse_boolean(&mut self) -> Box<Expression> {
+        let expression = BooleanExpression {
+            token: self.current_token.clone(),
+            value: self.current_token.kind == TokenType::True,
+        };
+
+        Box::new(Expression::Bool(expression))
+    }
+
+    fn parse_grouped_expression(&mut self) -> Box<Expression> {
+        self.next_token();
+
+        let expression = self.parse_expression(OperatorPrecedence::Lowest).unwrap();
+
+        if let Err(e) = self.expect_peek(TokenType::RParen) {
+            panic!("Failed to parse grouped expression:\n {:?}", e); // This should never happen
+        }
+
+        Box::new(expression)
+    }
+
+    fn parse_block_statement(&mut self) -> Option<Box<BlockStatement>> {
+        let token = self.current_token.clone();
+        let mut statements: Vec<Statement> = Vec::new();
+
+        self.next_token();
+
+        while self.current_token.kind != TokenType::RBrace
+            && self.current_token.kind != TokenType::EOF
+        {
+            let statement = self.parse_statement().unwrap();
+
+            statements.push(statement);
+
+            self.next_token();
+        }
+
+        let block_statement = BlockStatement {
+            token,
+            statements: Box::new(statements),
+        };
+
+        Some(Box::new(block_statement))
+    }
+
+    fn parse_if_expression(&mut self) -> Box<Expression> {
+        let token = self.current_token.clone();
+
+        if let Err(e) = self.expect_peek(TokenType::LParen) {
+            panic!("Failed to parse if expression:\n {:?}", e); // This should never happen
+        }
+
+        self.next_token();
+
+        let condition = self.parse_expression(OperatorPrecedence::Lowest).unwrap();
+
+        if let Err(e) = self.expect_peek(TokenType::RParen) {
+            panic!("Failed to parse if expression:\n {:?}", e); // This should never happen
+        }
+
+        if let Err(e) = self.expect_peek(TokenType::LBrace) {
+            panic!("Failed to parse if expression:\n {:?}", e); // This should never happen
+        }
+
+        let consequence = self.parse_block_statement();
+
+        let mut alternative= None;
+
+        if self.peek_token.kind == TokenType::Else {
+            self.next_token();
+
+            if let Err(e) = self.expect_peek(TokenType::LBrace) {
+                panic!("Failed to parse if expression:\n {:?}", e); // This should never happen
+            }
+
+            alternative = self.parse_block_statement();
+        };
+
+        let if_expr = IfExpression {
+            token,
+            condition: Box::new(condition),
+            consequence,
+            alternative,
+        };
+
+        Box::new(Expression::If(if_expr))
+    }
+
+    fn parse_infix_expression(&mut self, left: Box<Expression>) -> Box<Expression> {
+        let token = self.current_token.clone();
+        let operator = self.current_token.literal.clone();
+
+        let precedence = self.current_precedence();
+
+        self.next_token();
+
+        let right = self.parse_expression(precedence).unwrap();
+
+        let expression = InfixExpression {
+            token,
+            operator,
+            left,
+            right: Box::new(right),
+        };
+
+        Box::new(Expression::Infix(expression))
+    }
+
+    fn parse_expression(
+        &mut self,
+        precedence: OperatorPrecedence,
+    ) -> Result<Expression, ParserError> {
+        let prefix = self.prefix_parse_fns.get(&self.current_token.kind);
+
+        if prefix.is_none() {
+            return Err(ParserError::ParseExpressionFail); // should be impossible
+        }
+
+        let mut left = prefix.unwrap()(self);
+
+        while self.peek_token.kind != TokenType::Semicolon && precedence < self.peek_precedence() {
+            // This whole infix block requires some more thought. This is the "least bad" approach I
+            // could come up with to satisfy the borrow checker. It could be the case that "registering"
+            // infix/prefix parse functions in the Parser constructor is a pattern that just doesn't
+            // translate to rust idiomatically. RefCell was my solution. I have no idea if this
+            // constitues "idiomatic" rust. It DOES at least help me avoid cloning the entire map
+            // of parse functions. I need an adult. And a beer. :(
+            let infix = {
+                let infix_fns = self.infix_parse_fns.borrow(); // Borrow immutably
+                infix_fns.get(&self.peek_token.kind).cloned() // Retrieve the function, cloned to return by value
+            };
+
+            if let Some(infix) = infix {
+                self.next_token();
+                left = infix(self, left);
+            } else {
+                return Ok(*left);
+            }
+        }
+
+        return Ok(*left);
     }
 
     fn parse_expression_statement(&mut self) -> Result<Statement, ParserError> {

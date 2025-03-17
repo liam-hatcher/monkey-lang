@@ -1,7 +1,5 @@
-use std::any::Any;
-
 use crate::{
-    ast::{Expression, Statement, InfixExpression},
+    ast::{Expression, InfixExpression, Statement},
     lexer::Lexer,
     parser::Parser,
 };
@@ -113,87 +111,63 @@ fn test_integer_literal(expression: &Expression, expected: i64) {
     }
 }
 
-// fn test_identifier(expression: &Expression, expected: String) {
-//     if let Expression::Identifier(id) = expression {
-//         assert_eq!(id.value, expected);
-//         assert_eq!(id.token.literal, expected);
-//     } else {
-//         panic!("not an Identifier");
-//     }
-// }
-
-// fn test_boolean_literal(expression: &Expression, expected: bool) {
-//     if let Expression::Boolean(id) = expression {
-//         assert_eq!(id.value, expected);
-//         assert_eq!(id.token.literal, expected);
-//     } else {
-//         panic!("not an Identifier");
-//     }
-// }
-
-fn test_literal_expression(expression: &Expression, expected: &dyn Any) {
-    if let Some(&int_value) = expected.downcast_ref::<i64>() {
-        if let Expression::Integer(i) = expression {
-            assert_eq!(i.value, int_value);
-        } else {
-            panic!("Expected an Integer expression");
-        }
-    } else if let Some(&int_value) = expected.downcast_ref::<i32>() {
-        if let Expression::Integer(i) = expression {
-            assert_eq!(i.value, int_value.into());
-        } else {
-            panic!("Expected an Integer expression");
-        }
-    } else if let Some(string_value) = expected.downcast_ref::<String>() {
-        if let Expression::Identifier(id) = expression {
-            assert_eq!(&id.value, string_value);
-        } else {
-            panic!("Expected an Identifier expression");
-        }
-    } else if let Some(&bool_value) = expected.downcast_ref::<bool>() {
-        // if let Expression::Boolean(b) = expression {
-        //     assert_eq!(b.value, bool_value);
-        // } else {
-        //     panic!("Expected a Boolean expression");
-        // }
-        panic!("NOT IMPLEMENTED YET");
+fn test_identifier(expression: &Expression, expected: String) {
+    if let Expression::Identifier(id) = expression {
+        assert_eq!(id.value, expected);
+        assert_eq!(id.token.literal, expected);
     } else {
-        panic!("Unexpected type for expected value");
+        panic!("not an Identifier");
     }
+}
+
+fn test_boolean_literal(expression: &Expression, expected: bool) {
+    if let Expression::Bool(id) = expression {
+        assert_eq!(id.value, expected);
+        assert_eq!(id.token.literal, expected.to_string());
+    } else {
+        panic!("not an Identifier");
+    }
+}
+
+fn test_literal_expression(exp: &Expression, expected: TestValue) {
+    match expected {
+        TestValue::String(s) => test_identifier(exp, s),
+        TestValue::Bool(b) => test_boolean_literal(exp, b),
+        TestValue::Int(i) => test_integer_literal(exp, i.into()),
+        // _ => panic!("type of exp not handled. got: {:?} expected", exp),
+    }
+}
+
+enum TestValue {
+    String(String),
+    Bool(bool),
+    Int(i32),
 }
 
 #[test]
 fn test_prefix_expressions() {
-    let tests_cases: [(String, String, &dyn Any); 2] = [
-        ("!5;".to_string(), "!".to_string(), &5),
+    let test_cases: [(String, String, TestValue); 6] = [
+        ("!5;".to_string(), "!".to_string(), TestValue::Int(5)),
+        ("-15;".to_string(), "-".to_string(), TestValue::Int(15)),
         (
-            "-15;".to_string(),
-            "-".to_string(),
-            &15,
+            "!foobar;".to_string(),
+            "!".to_string(),
+            TestValue::String("foobar".to_string()),
         ),
-        // (
-        //     "!foobar;".to_string(),
-        //     "!".to_string(),
-        //     PrefixTestValue::String("foobar".to_string()),
-        // ),
-        // (
-        //     "-foobar;".to_string(),
-        //     "-".to_string(),
-        //     PrefixTestValue::String("foobar".to_string()),
-        // ),
-        // (
-        //     "!true;".to_string(),
-        //     "!".to_string(),
-        //     PrefixTestValue::Bool(true),
-        // ),
-        // (
-        //     "!false;".to_string(),
-        //     "!".to_string(),
-        //     PrefixTestValue::Bool(false),
-        // ),
+        (
+            "-foobar;".to_string(),
+            "-".to_string(),
+            TestValue::String("foobar".to_string()),
+        ),
+        ("!true;".to_string(), "!".to_string(), TestValue::Bool(true)),
+        (
+            "!false;".to_string(),
+            "!".to_string(),
+            TestValue::Bool(false),
+        ),
     ];
 
-    for (input, operator, value) in tests_cases {
+    for (input, operator, value) in test_cases {
         let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let program = parser.parse_program();
@@ -215,23 +189,94 @@ fn test_prefix_expressions() {
     }
 }
 
-fn test_infix_expression(expression: &InfixExpression, left: i64, operator: &String, right: i64) {
-    test_literal_expression(&expression.left, &left);
+fn test_infix_expression(
+    expression: &InfixExpression,
+    left: TestValue,
+    operator: &String,
+    right: TestValue,
+) {
+    test_literal_expression(&expression.left, left);
     assert_eq!(*operator, expression.operator);
-    test_literal_expression(&expression.right, &right);
+    test_literal_expression(&expression.right, right);
 }
 
 #[test]
 fn test_infix_expresions() {
-    let infix_tests: &[(String, i64, String, i64)] = &[
-        ("5 + 5;".to_string(), 5, "+".to_string(), 5),
-        ("5 - 5;".to_string(), 5, "-".to_string(), 5),
-        ("5 * 5;".to_string(), 5, "*".to_string(), 5),
-        ("5 / 5;".to_string(), 5, "/".to_string(), 5),
-        ("5 > 5;".to_string(), 5, ">".to_string(), 5),
-        ("5 < 5;".to_string(), 5, "<".to_string(), 5),
-        ("5 == 5;".to_string(), 5, "==".to_string(), 5),
-        ("5 != 5;".to_string(), 5, "!=".to_string(), 5),
+    let infix_tests: [(&str, TestValue, &str, TestValue); 19] = [
+        ("5 + 5;", TestValue::Int(5), "+", TestValue::Int(5)),
+        ("5 - 5;", TestValue::Int(5), "-", TestValue::Int(5)),
+        ("5 * 5;", TestValue::Int(5), "*", TestValue::Int(5)),
+        ("5 / 5;", TestValue::Int(5), "/", TestValue::Int(5)),
+        ("5 > 5;", TestValue::Int(5), ">", TestValue::Int(5)),
+        ("5 < 5;", TestValue::Int(5), "<", TestValue::Int(5)),
+        ("5 == 5;", TestValue::Int(5), "==", TestValue::Int(5)),
+        ("5 != 5;", TestValue::Int(5), "!=", TestValue::Int(5)),
+        (
+            "foobar + barfoo;",
+            TestValue::String("foobar".to_string()),
+            "+",
+            TestValue::String("barfoo".to_string()),
+        ),
+        (
+            "foobar - barfoo;",
+            TestValue::String("foobar".to_string()),
+            "-",
+            TestValue::String("barfoo".to_string()),
+        ),
+        (
+            "foobar * barfoo;",
+            TestValue::String("foobar".to_string()),
+            "*",
+            TestValue::String("barfoo".to_string()),
+        ),
+        (
+            "foobar / barfoo;",
+            TestValue::String("foobar".to_string()),
+            "/",
+            TestValue::String("barfoo".to_string()),
+        ),
+        (
+            "foobar > barfoo;",
+            TestValue::String("foobar".to_string()),
+            ">",
+            TestValue::String("barfoo".to_string()),
+        ),
+        (
+            "foobar < barfoo;",
+            TestValue::String("foobar".to_string()),
+            "<",
+            TestValue::String("barfoo".to_string()),
+        ),
+        (
+            "foobar == barfoo;",
+            TestValue::String("foobar".to_string()),
+            "==",
+            TestValue::String("barfoo".to_string()),
+        ),
+        (
+            "foobar != barfoo;",
+            TestValue::String("foobar".to_string()),
+            "!=",
+            TestValue::String("barfoo".to_string()),
+        ),
+        (
+            "true == true",
+            TestValue::Bool(true),
+            "==",
+            TestValue::Bool(true),
+        ),
+        (
+            "true != false",
+            TestValue::Bool(true),
+            "!=",
+            TestValue::Bool(false),
+        ),
+        (
+            "false == false",
+            TestValue::Bool(false),
+            "==",
+            TestValue::Bool(false),
+        ),
     ];
 
     for (input, left, operator, right) in infix_tests {
@@ -244,10 +289,98 @@ fn test_infix_expresions() {
         if let Statement::Expression(es) = &program.statements[0] {
             if let Expression::Infix(ie) = &*es.expression {
                 // assert_eq!(ie.operator, operator);
-                test_infix_expression(ie, *left, operator, *right );
+                test_infix_expression(ie, left, &operator.to_string(), right);
             }
         } else {
             panic!("Invalid ExpressionStatement");
         }
+    }
+}
+
+#[test]
+fn test_operator_precedence() {
+    let test_cases = [
+        ("-a * b", "((-a) * b)"),
+        ("!-a", "(!(-a))"),
+        ("a + b + c", "((a + b) + c)"),
+        ("a + b - c", "((a + b) - c)"),
+        ("a * b * c", "((a * b) * c)"),
+        ("a * b / c", "((a * b) / c)"),
+        ("a + b / c", "(a + (b / c))"),
+        ("a + b * c + d / e - f", "(((a + (b * c)) + (d / e)) - f)"),
+        ("3 + 4; -5 * 5", "(3 + 4)((-5) * 5)"),
+        ("5 > 4 == 3 < 4", "((5 > 4) == (3 < 4))"),
+        ("5 < 4 != 3 > 4", "((5 < 4) != (3 > 4))"),
+        (
+            "3 + 4 * 5 == 3 * 1 + 4 * 5",
+            "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))",
+        ),
+        ("true", "true"),
+        ("false", "false"),
+        ("3 > 5 == false", "((3 > 5) == false)"),
+        ("3 < 5 == true", "((3 < 5) == true)"),
+        ("1 + (2 + 3) + 4", "((1 + (2 + 3)) + 4)"),
+        ("(5 + 5) * 2", "((5 + 5) * 2)"),
+        ("2 / (5 + 5)", "(2 / (5 + 5))"),
+        ("(5 + 5) * 2 * (5 + 5)", "(((5 + 5) * 2) * (5 + 5))"),
+        ("-(5 + 5)", "(-(5 + 5))"),
+        ("!(true == true)", "(!(true == true))"),
+        // ("a + add(b * c) + d", "((a + add((b * c))) + d)"),
+        // (
+        //     "add(a, b, 1, 2 * 3, 4 + 5, add(6, 7 * 8))",
+        //     "add(a, b, 1, (2 * 3), (4 + 5), add(6, (7 * 8)))",
+        // ),
+        // (
+        //     "add(a + b + c * d / f + g)",
+        //     "add((((a + b) + ((c * d) / f)) + g))",
+        // ),
+    ];
+
+    for (input, output) in test_cases {
+        let mut lexer = Lexer::new(input.into());
+        let mut parser = Parser::new(&mut lexer);
+        let program = parser.parse_program();
+
+        assert_eq!(program.to_string(), output, "Program matches output");
+    }
+}
+
+#[test]
+fn test_if_expression() {
+    let input = "if (x < y) { x }";
+
+    let mut lexer = Lexer::new(input.into());
+    let mut parser = Parser::new(&mut lexer);
+    let program = parser.parse_program();
+
+    assert_eq!(program.statements.len(), 1, "program length should be 1");
+
+    if let Statement::Expression(es) = &program.statements[0] {
+        if let Expression::If(ie) = &*es.expression {
+            if let Expression::Infix(infix) = &*ie.condition {
+                test_infix_expression(
+                    infix,
+                    TestValue::String("x".into()),
+                    &String::from("<"),
+                    TestValue::String("y".into()),
+                );
+            }
+
+            assert_eq!(
+                ie.consequence.as_ref().unwrap().statements.len(),
+                1,
+                "Expected 1 statement"
+            );
+
+            if let Statement::Expression(exp) = &ie.consequence.as_ref().unwrap().statements[0] {
+                test_identifier(&*exp.expression, String::from("x"));
+            }
+
+            assert!(ie.alternative.is_none(), "unexpected alternative");
+        } else {
+            panic!("Invalid IfExpression");
+        }
+    } else {
+        panic!("Invalid ExpressionStatement");
     }
 }

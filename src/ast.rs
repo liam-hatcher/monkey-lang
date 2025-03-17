@@ -91,11 +91,48 @@ impl InfixExpression {
 }
 
 #[derive(Debug)]
+pub struct BooleanExpression {
+    pub token: Token,
+    pub value: bool,
+}
+
+impl BooleanExpression {
+    pub fn to_string(&self) -> String {
+        String::from(&self.token.literal)
+    }
+}
+
+#[derive(Debug)]
+pub struct IfExpression {
+    pub token: Token,
+    pub condition: Box<Expression>,
+
+    // these option types might be unnecessary
+    pub consequence: Option<Box<BlockStatement>>,
+    pub alternative: Option<Box<BlockStatement>>,
+}
+
+impl IfExpression {
+    pub fn to_string(&self) -> String {
+        let condition = &*self.condition.to_string();
+        let consequence = self.consequence.as_ref().unwrap().to_string();
+        
+        if let Some(alt) = self.alternative.as_ref() {
+            return format!("if({:?} {:?}else {:?}", condition, consequence, alt.to_string());
+        }
+
+        format!("if({:?} {:?}", condition, consequence)
+    }
+}
+
+#[derive(Debug)]
 pub enum Expression {
     Identifier(Identifier),
     Integer(IntegerLiteral),
     Prefix(PrefixExpression),
     Infix(InfixExpression),
+    Bool(BooleanExpression),
+    If(IfExpression),
 }
 
 impl Expression {
@@ -105,6 +142,8 @@ impl Expression {
             Expression::Integer(i) => i.to_string(),
             Expression::Prefix(pe) => pe.to_string(),
             Expression::Infix(ie) => ie.to_string(),
+            Expression::Bool(b) => b.to_string(),
+            Expression::If(ie) => ie.to_string(),
         }
     }
 }
@@ -122,6 +161,22 @@ impl ExpressionStatement {
 }
 
 #[derive(Debug)]
+pub struct BlockStatement {
+    pub token: Token,
+    pub statements: Box<Vec<Statement>>,
+}
+
+impl BlockStatement {
+    pub fn to_string(&self) -> String {
+        let mut output = String::new();
+        for s in &*self.statements {
+            output += &s.to_string()
+        }
+        output
+    }
+}
+
+#[derive(Debug)]
 pub enum Statement {
     Let(Let),
     Return(Return),
@@ -131,14 +186,16 @@ pub enum Statement {
     // x + 10;
     // foobar;
     Expression(ExpressionStatement),
+    Block(BlockStatement),
 }
 
 impl Statement {
     pub fn to_string(&self) -> String {
         match self {
-            Self::Let(s) => s.to_string(),
-            Self::Expression(ex) => ex.to_string(),
-            Self::Return(r) => r.to_string(),
+            Statement::Let(s) => s.to_string(),
+            Statement::Expression(ex) => ex.to_string(),
+            Statement::Return(r) => r.to_string(),
+            Statement::Block(bs) => bs.to_string(),
         }
     }
 }
