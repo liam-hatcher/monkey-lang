@@ -384,3 +384,92 @@ fn test_if_expression() {
         panic!("Invalid ExpressionStatement");
     }
 }
+
+#[test]
+fn test_function_literal() {
+    let input = "fn(x, y) { x + y; }";
+
+    let mut lexer = Lexer::new(input.into());
+    let mut parser = Parser::new(&mut lexer);
+    let program = parser.parse_program();
+
+    assert_eq!(program.statements.len(), 1, "program length should be 1");
+
+    if let Statement::Expression(es) = &program.statements[0] {
+        if let Expression::Function(f) = &*es.expression {
+            assert_eq!(f.parameters.len(), 2);
+            assert_eq!(f.parameters[0].value, "x", "first parameter matches");
+            assert_eq!(f.parameters[1].value, "y", "first parameter matches");
+
+            if let Statement::Expression(es) = &f.body.statements[0] {
+                let exp = &*es.expression;
+                if let Expression::Infix(ie) = exp {
+                    test_infix_expression(
+                        ie,
+                        TestValue::String("x".into()),
+                        &"+".to_string(),
+                        TestValue::String("y".into()),
+                    );
+                } else {
+                    panic!("function body not infix expression");
+                }
+            } else {
+                panic!("Invalid function body statement");
+            }
+        } else {
+            panic!("Invalid FunctionLiteral");
+        }
+    } else {
+        panic!("Invalid ExpressionStatement");
+    }
+}
+
+struct FnLiteralTest {
+    input: String,
+    expected_params: Vec<String>,
+}
+
+#[test]
+fn test_parse_function_parameters() {
+    let tests = vec![
+        FnLiteralTest {
+            input: "fn() {};".to_string(),
+            expected_params: vec![],
+        },
+        FnLiteralTest {
+            input: "fn(x) {};".to_string(),
+            expected_params: vec!["x".to_string()],
+        },
+        FnLiteralTest {
+            input: "fn(x, y, z) {};".to_string(),
+            expected_params: vec!["x".to_string(), "y".to_string(), "z".to_string()],
+        },
+    ];
+
+    for (test) in tests {
+        let mut lexer = Lexer::new(test.input);
+        let mut parser = Parser::new(&mut lexer);
+        let program = parser.parse_program();
+
+        if let Statement::Expression(es) = &program.statements[0] {
+            if let Expression::Function(f) = &*es.expression {
+                assert_eq!(
+                    f.parameters.len(),
+                    test.expected_params.len(),
+                    "parameter list lengths match"
+                );
+
+                test.expected_params
+                    .iter()
+                    .enumerate()
+                    .for_each(|(i, param)| {
+                        assert_eq!(f.parameters[i].value, *param, "function param matches")
+                    });
+            } else {
+                panic!("Invalid FunctionLiteral");
+            }
+        } else {
+            panic!("Invalid ExpressionStatement");
+        }
+    }
+}

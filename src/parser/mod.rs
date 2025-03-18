@@ -1,5 +1,5 @@
 use core::fmt;
-use std::{cell::RefCell, collections::HashMap};
+use std::{cell::RefCell, collections::HashMap, process::id};
 
 use crate::{
     ast::*,
@@ -51,6 +51,8 @@ impl fmt::Display for ParserError {
 
 impl<'a> Parser<'a> {
     pub fn new(lexer: &'a mut Lexer) -> Self {
+        use TokenType::*;
+
         let mut parser: Parser<'a> = Self {
             lexer,
             current_token: Token::default(),
@@ -60,23 +62,24 @@ impl<'a> Parser<'a> {
             infix_parse_fns: RefCell::new(HashMap::new()),
         };
 
-        parser.register_prefix(TokenType::Identifier, |p| p.parse_identifier());
-        parser.register_prefix(TokenType::Int, |p| p.parse_integer_literal());
-        parser.register_prefix(TokenType::Bang, |p| p.parse_prefix_expression());
-        parser.register_prefix(TokenType::Minus, |p| p.parse_prefix_expression());
-        parser.register_prefix(TokenType::True, |p| p.parse_boolean());
-        parser.register_prefix(TokenType::False, |p| p.parse_boolean());
-        parser.register_prefix(TokenType::LParen, |p| p.parse_grouped_expression());
-        parser.register_prefix(TokenType::If, |p| p.parse_if_expression());
+        parser.register_prefix(Identifier, |p| p.parse_identifier());
+        parser.register_prefix(Int, |p| p.parse_integer_literal());
+        parser.register_prefix(Bang, |p| p.parse_prefix_expression());
+        parser.register_prefix(Minus, |p| p.parse_prefix_expression());
+        parser.register_prefix(True, |p| p.parse_boolean());
+        parser.register_prefix(False, |p| p.parse_boolean());
+        parser.register_prefix(LParen, |p| p.parse_grouped_expression());
+        parser.register_prefix(If, |p| p.parse_if_expression());
+        parser.register_prefix(Function, |p| p.parse_function_literal());
 
-        parser.register_infix(TokenType::Plus, |p, ex| p.parse_infix_expression(ex));
-        parser.register_infix(TokenType::Minus, |p, ex| p.parse_infix_expression(ex));
-        parser.register_infix(TokenType::Slash, |p, ex| p.parse_infix_expression(ex));
-        parser.register_infix(TokenType::Asterisk, |p, ex| p.parse_infix_expression(ex));
-        parser.register_infix(TokenType::Equal, |p, ex| p.parse_infix_expression(ex));
-        parser.register_infix(TokenType::NotEqual, |p, ex| p.parse_infix_expression(ex));
-        parser.register_infix(TokenType::LT, |p, ex| p.parse_infix_expression(ex));
-        parser.register_infix(TokenType::GT, |p, ex| p.parse_infix_expression(ex));
+        parser.register_infix(Plus, |p, ex| p.parse_infix_expression(ex));
+        parser.register_infix(Minus, |p, ex| p.parse_infix_expression(ex));
+        parser.register_infix(Slash, |p, ex| p.parse_infix_expression(ex));
+        parser.register_infix(Asterisk, |p, ex| p.parse_infix_expression(ex));
+        parser.register_infix(Equal, |p, ex| p.parse_infix_expression(ex));
+        parser.register_infix(NotEqual, |p, ex| p.parse_infix_expression(ex));
+        parser.register_infix(LT, |p, ex| p.parse_infix_expression(ex));
+        parser.register_infix(GT, |p, ex| p.parse_infix_expression(ex));
 
         // eat two tokens so the current_token and peek_token get set correctly
         parser.next_token();
@@ -285,22 +288,22 @@ impl<'a> Parser<'a> {
         let condition = self.parse_expression(OperatorPrecedence::Lowest).unwrap();
 
         if let Err(e) = self.expect_peek(TokenType::RParen) {
-            panic!("Failed to parse if expression:\n {:?}", e); // This should never happen
+            panic!("Failed to parse if expression:\n {:?}", e);
         }
 
         if let Err(e) = self.expect_peek(TokenType::LBrace) {
-            panic!("Failed to parse if expression:\n {:?}", e); // This should never happen
+            panic!("Failed to parse if expression:\n {:?}", e);
         }
 
         let consequence = self.parse_block_statement();
 
-        let mut alternative= None;
+        let mut alternative = None;
 
         if self.peek_token.kind == TokenType::Else {
             self.next_token();
 
             if let Err(e) = self.expect_peek(TokenType::LBrace) {
-                panic!("Failed to parse if expression:\n {:?}", e); // This should never happen
+                panic!("Failed to parse if expression:\n {:?}", e);
             }
 
             alternative = self.parse_block_statement();
@@ -314,6 +317,61 @@ impl<'a> Parser<'a> {
         };
 
         Box::new(Expression::If(if_expr))
+    }
+
+    fn parse_function_parameters(&mut self) -> Vec<Identifier> {
+        let mut identifiers: Vec<Identifier> = vec![];
+
+        if self.peek_token.kind == TokenType::RParen {
+            self.next_token();
+            return identifiers;
+        }
+
+        self.next_token();
+
+        identifiers.push(Identifier {
+            token: self.current_token.clone(),
+            value: self.current_token.literal.clone(),
+        });
+
+        while self.peek_token.kind == TokenType::Comma {
+            self.next_token();
+            self.next_token();
+            identifiers.push(Identifier {
+                token: self.current_token.clone(),
+                value: self.current_token.literal.clone(),
+            });
+        }
+
+        if let Err(e) = self.expect_peek(TokenType::RParen) {
+            panic!("Failed to parse function parameters: \n {:?}", e);
+        }
+
+        identifiers
+    }
+
+    fn parse_function_literal(&mut self) -> Box<Expression> {
+        let token = self.current_token.clone();
+
+        if let Err(e) = self.expect_peek(TokenType::LParen) {
+            panic!("Failed to parse function literal expression:\n {:?}", e);
+        }
+
+        let parameters = self.parse_function_parameters();
+
+        if let Err(e) = self.expect_peek(TokenType::LBrace) {
+            panic!("Failed to parse function literal expression:\n {:?}", e);
+        }
+        
+        let body = self.parse_block_statement().unwrap();
+
+        let literal = FunctionLiteral {
+            token,
+            parameters,
+            body
+        };
+
+        Box::new(Expression::Function(literal))
     }
 
     fn parse_infix_expression(&mut self, left: Box<Expression>) -> Box<Expression> {

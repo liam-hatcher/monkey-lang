@@ -65,6 +65,8 @@ impl Lexer {
     
 
     pub fn next_token(&mut self) -> Token {
+        use TokenType::*;
+
         self.skip_whitespace();
 
         let token: Token = match self.ch {
@@ -72,30 +74,30 @@ impl Lexer {
                 if self.peek() == '=' {
                     self.read_char();
                     self.read_char();
-                    return Token::new(TokenType::Equal, String::from("=="));
+                    return Token::new(Equal, String::from("=="));
                 }
-                Token::new(TokenType::Assign, self.ch.into())
+                Token::new(Assign, self.ch.into())
             },
-            '+' => Token::new(TokenType::Plus, self.ch.into()),
-            '-' => Token::new(TokenType::Minus, self.ch.into()),
+            '+' => Token::new(Plus, self.ch.into()),
+            '-' => Token::new(Minus, self.ch.into()),
             '!' => {
                 if self.peek() == '=' {
                     self.read_char();
                     self.read_char();
-                    return Token::new(TokenType::NotEqual, String::from("!="));
+                    return Token::new(NotEqual, String::from("!="));
                 }
-                Token::new(TokenType::Bang, self.ch.into())
+                Token::new(Bang, self.ch.into())
             },
-            '*' => Token::new(TokenType::Asterisk, self.ch.into()),
-            '/' => Token::new(TokenType::Slash, self.ch.into()),
-            '<' => Token::new(TokenType::LT, self.ch.into()),
-            '>' => Token::new(TokenType::GT, self.ch.into()),
-            '(' => Token::new(TokenType::LParen, self.ch.into()),
-            ')' => Token::new(TokenType::RParen, self.ch.into()),
-            '{' => Token::new(TokenType::LBrace, self.ch.into()),
-            '}' => Token::new(TokenType::RBrace, self.ch.into()),
-            ',' => Token::new(TokenType::Comma, self.ch.into()),
-            ';' => Token::new(TokenType::Semicolon, self.ch.into()),
+            '*' => Token::new(Asterisk, self.ch.into()),
+            '/' => Token::new(Slash, self.ch.into()),
+            '<' => Token::new(LT, self.ch.into()),
+            '>' => Token::new(GT, self.ch.into()),
+            '(' => Token::new(LParen, self.ch.into()),
+            ')' => Token::new(RParen, self.ch.into()),
+            '{' => Token::new(LBrace, self.ch.into()),
+            '}' => Token::new(RBrace, self.ch.into()),
+            ',' => Token::new(Comma, self.ch.into()),
+            ';' => Token::new(Semicolon, self.ch.into()),
             '\0' => {
                 if self.position == 0 {
                     // If the we are at the beggining of the input,
@@ -104,16 +106,16 @@ impl Lexer {
                     self.read_char();
                     return self.next_token();
                 }
-                Token::new(TokenType::EOF, String::new())
+                Token::new(EOF, String::new())
             }
             _ => {
                 if self.ch.is_alphabetic() || self.ch == '_' {
                     let id = self.read_identifier();
                     return Token::new(lookup_identifier(id), id.into());
                 } else if self.ch.is_digit(10) {
-                    return Token::new(TokenType::Int, self.read_number().into());
+                    return Token::new(Int, self.read_number().into());
                 }
-                return Token::new(TokenType::Illegal, self.ch.into());
+                return Token::new(Illegal, self.ch.into());
             }
         };
 

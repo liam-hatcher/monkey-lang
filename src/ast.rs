@@ -116,12 +116,42 @@ impl IfExpression {
     pub fn to_string(&self) -> String {
         let condition = &*self.condition.to_string();
         let consequence = self.consequence.as_ref().unwrap().to_string();
-        
+
         if let Some(alt) = self.alternative.as_ref() {
-            return format!("if({:?} {:?}else {:?}", condition, consequence, alt.to_string());
+            return format!(
+                "if({:?} {:?}else {:?}",
+                condition,
+                consequence,
+                alt.to_string()
+            );
         }
 
         format!("if({:?} {:?}", condition, consequence)
+    }
+}
+
+#[derive(Debug)]
+pub struct FunctionLiteral {
+    pub token: Token,
+    pub parameters: Vec<Identifier>,
+    pub body: Box<BlockStatement>,
+}
+
+impl FunctionLiteral {
+    pub fn to_string(&self) -> String {
+        let params = self
+            .parameters
+            .iter()
+            .map(|i| i.value.as_str())
+            .collect::<Vec<&str>>()
+            .join(", ");
+
+        format!(
+            "{:?}({:?}){:?}",
+            self.token.literal,
+            params,
+            self.body.to_string()
+        )
     }
 }
 
@@ -133,17 +163,20 @@ pub enum Expression {
     Infix(InfixExpression),
     Bool(BooleanExpression),
     If(IfExpression),
+    Function(FunctionLiteral),
 }
 
 impl Expression {
     pub fn to_string(&self) -> String {
+        use Expression::*;
         match self {
-            Expression::Identifier(id) => id.to_string(),
-            Expression::Integer(i) => i.to_string(),
-            Expression::Prefix(pe) => pe.to_string(),
-            Expression::Infix(ie) => ie.to_string(),
-            Expression::Bool(b) => b.to_string(),
-            Expression::If(ie) => ie.to_string(),
+            Identifier(id) => id.to_string(),
+            Integer(i) => i.to_string(),
+            Prefix(pe) => pe.to_string(),
+            Infix(ie) => ie.to_string(),
+            Bool(b) => b.to_string(),
+            If(ie) => ie.to_string(),
+            Function(f) => f.to_string(),
         }
     }
 }
@@ -180,7 +213,6 @@ impl BlockStatement {
 pub enum Statement {
     Let(Let),
     Return(Return),
-
     // The most basic kind of expression is a statement
     // e.g.
     // x + 10;
