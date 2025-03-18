@@ -1,26 +1,32 @@
 use crate::token::Token;
 
-#[derive(Debug)]
-pub struct Identifier {
+pub trait ASTNode {
+    fn to_string(&self) -> String;
+
+    // TODO.....
+}
+
+#[derive(Debug, Clone)]
+pub struct IdentifierExpression {
     pub token: Token,
     pub value: String,
 }
 
-impl Identifier {
-    pub fn to_string(&self) -> String {
+impl ASTNode for IdentifierExpression {
+    fn to_string(&self) -> String {
         self.value.clone()
     }
 }
 
-#[derive(Debug)]
-pub struct Let {
+#[derive(Debug, Clone)]
+pub struct LetStatement {
     pub token: Token,
-    pub id: Identifier,
-    // pub value: Expression, // TODO
+    pub id: IdentifierExpression,
+    pub value: Box<Expression>,
 }
 
-impl Let {
-    pub fn to_string(&self) -> String {
+impl ASTNode for LetStatement {
+    fn to_string(&self) -> String {
         let literal = &self.token.literal;
         let name = &self.id.value;
 
@@ -28,44 +34,45 @@ impl Let {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Return {
     pub token: Token,
-    // pub value: Expression // todo
+    pub value: Option<Box<Expression>>,
 }
 
-impl Return {
-    pub fn to_string(&self) -> String {
+impl ASTNode for Return {
+    fn to_string(&self) -> String {
         let literal = &self.token.literal;
-        // let return_value = &self.value.to_string();
-
-        // if return_value { // todo }
-
-        format!("{literal} [PLACEHOLDER];")
+        if self.value.is_some() {
+            let return_value = &self.value.clone().unwrap();
+            return format!("{literal} {};", return_value.to_string());
+        } else {
+            return format!("{literal};");
+        };
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct IntegerLiteral {
     pub token: Token,
     pub value: i64,
 }
 
-impl IntegerLiteral {
-    pub fn to_string(&self) -> String {
+impl ASTNode for IntegerLiteral {
+    fn to_string(&self) -> String {
         self.token.literal.clone()
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PrefixExpression {
     pub token: Token,
     pub operator: String,
     pub right: Box<Expression>,
 }
 
-impl PrefixExpression {
-    pub fn to_string(&self) -> String {
+impl ASTNode for PrefixExpression {
+    fn to_string(&self) -> String {
         let op = &self.operator;
         let right = &*self.right.to_string();
 
@@ -73,7 +80,7 @@ impl PrefixExpression {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct InfixExpression {
     pub token: Token,
     pub left: Box<Expression>,
@@ -81,8 +88,8 @@ pub struct InfixExpression {
     pub right: Box<Expression>,
 }
 
-impl InfixExpression {
-    pub fn to_string(&self) -> String {
+impl ASTNode for InfixExpression {
+    fn to_string(&self) -> String {
         let left = &*self.left.to_string();
         let op = &self.operator;
         let right = &*self.right.to_string();
@@ -90,19 +97,19 @@ impl InfixExpression {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BooleanExpression {
     pub token: Token,
     pub value: bool,
 }
 
-impl BooleanExpression {
-    pub fn to_string(&self) -> String {
+impl ASTNode for BooleanExpression {
+    fn to_string(&self) -> String {
         String::from(&self.token.literal)
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct IfExpression {
     pub token: Token,
     pub condition: Box<Expression>,
@@ -112,8 +119,8 @@ pub struct IfExpression {
     pub alternative: Option<Box<BlockStatement>>,
 }
 
-impl IfExpression {
-    pub fn to_string(&self) -> String {
+impl ASTNode for IfExpression {
+    fn to_string(&self) -> String {
         let condition = &*self.condition.to_string();
         let consequence = self.consequence.as_ref().unwrap().to_string();
 
@@ -130,15 +137,15 @@ impl IfExpression {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FunctionLiteral {
     pub token: Token,
-    pub parameters: Vec<Identifier>,
+    pub parameters: Vec<IdentifierExpression>,
     pub body: Box<BlockStatement>,
 }
 
-impl FunctionLiteral {
-    pub fn to_string(&self) -> String {
+impl ASTNode for FunctionLiteral {
+    fn to_string(&self) -> String {
         let params = self
             .parameters
             .iter()
@@ -155,19 +162,41 @@ impl FunctionLiteral {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
+pub struct CallExpression {
+    pub token: Token,
+    pub function: Box<Expression>,
+    pub arguments: Vec<Box<Expression>>,
+}
+
+impl ASTNode for CallExpression {
+    fn to_string(&self) -> String {
+        let arguments = self
+            .arguments
+            .iter()
+            .map(|i| String::from(&i.to_string()))
+            .collect::<Vec<String>>()
+            .join(", ");
+
+        format!("{}({})", self.function.to_string(), arguments)
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum Expression {
-    Identifier(Identifier),
+    Identifier(IdentifierExpression),
     Integer(IntegerLiteral),
     Prefix(PrefixExpression),
     Infix(InfixExpression),
     Bool(BooleanExpression),
     If(IfExpression),
     Function(FunctionLiteral),
+    Call(CallExpression),
 }
 
-impl Expression {
-    pub fn to_string(&self) -> String {
+impl ASTNode for Expression {
+    // Is this impl even necessary? seems dumb
+    fn to_string(&self) -> String {
         use Expression::*;
         match self {
             Identifier(id) => id.to_string(),
@@ -177,30 +206,31 @@ impl Expression {
             Bool(b) => b.to_string(),
             If(ie) => ie.to_string(),
             Function(f) => f.to_string(),
+            Call(c) => c.to_string(),
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ExpressionStatement {
     pub token: Token,
     pub expression: Box<Expression>,
 }
 
-impl ExpressionStatement {
-    pub fn to_string(&self) -> String {
+impl ASTNode for ExpressionStatement {
+    fn to_string(&self) -> String {
         String::from(&*self.expression.to_string())
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BlockStatement {
     pub token: Token,
     pub statements: Box<Vec<Statement>>,
 }
 
-impl BlockStatement {
-    pub fn to_string(&self) -> String {
+impl ASTNode for BlockStatement {
+    fn to_string(&self) -> String {
         let mut output = String::new();
         for s in &*self.statements {
             output += &s.to_string()
@@ -209,9 +239,9 @@ impl BlockStatement {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Statement {
-    Let(Let),
+    Let(LetStatement),
     Return(Return),
     // The most basic kind of expression is a statement
     // e.g.
@@ -221,8 +251,8 @@ pub enum Statement {
     Block(BlockStatement),
 }
 
-impl Statement {
-    pub fn to_string(&self) -> String {
+impl ASTNode for Statement {
+    fn to_string(&self) -> String {
         match self {
             Statement::Let(s) => s.to_string(),
             Statement::Expression(ex) => ex.to_string(),

@@ -15,42 +15,65 @@ fn test_let_statement(statement: &Statement, expected_id: &str) {
 
 #[test]
 fn test_let_statements() {
-    let input = r#"
-        let x = 5;
-        let y = 10;
-        let foobar = 838383;
-    "#;
+    let tests = [
+        ("let x = 5;", "x", TestValue::Int(5)),
+        ("let y = true;", "y", TestValue::Bool(true)),
+        ("let foobar = y;", "foobar", TestValue::String("y".to_string())),
+    ];
+    
+    for (input, expected_identifier, expected_value) in tests {
+        let mut lexer = Lexer::new(input.to_string());
+        let mut parser = Parser::new(&mut lexer);
+        let program = parser.parse_program();
 
-    let mut lexer = Lexer::new(input.into());
-    let mut parser = Parser::new(&mut lexer);
+        assert_eq!(program.statements.len(), 1);
 
-    let program = parser.parse_program();
-    assert_eq!(program.statements.len(), 3);
-
-    let tests = ["x", "y", "foobar"];
-
-    for (i, test) in tests.iter().enumerate() {
-        test_let_statement(&program.statements[i], test);
+        test_let_statement(&program.statements[0], expected_identifier);
+        if let Statement::Let(l) = &program.statements[0] {
+            match expected_value {
+                // this seems really stupid.
+                TestValue::String(s) => {
+                    test_literal_expression(&*l.value, TestValue::String(s));
+                },
+                TestValue::Bool(b) => {
+                    test_boolean_literal(&*l.value, b);
+                },
+                TestValue::Int(i) => {
+                    test_literal_expression(&*l.value, TestValue::Int(i));
+                },
+            };
+        }
     }
 }
 
 #[test]
 fn test_return_statements() {
-    let input = r#"
-        return 5;
-        return 10;
-        return 993322;
-    "#;
+    let tests = [
+        ("return 5;", TestValue::Int(5)),
+		("return true;", TestValue::Bool(true)),
+		("return foobar;", TestValue::String("foobar".to_string())),
+    ];
 
-    let mut lexer = Lexer::new(input.into());
-    let mut parser = Parser::new(&mut lexer);
-    let program = parser.parse_program();
+    for (input, expected) in tests {
 
-    assert_eq!(program.statements.len(), 3);
+        let mut lexer = Lexer::new(input.to_string());
+        let mut parser = Parser::new(&mut lexer);
+        let program = parser.parse_program();
+    
+        assert_eq!(program.statements.len(), 1);
 
-    for s in program.statements {
-        if let Statement::Return(r) = s {
+        if let Statement::Return(r) = &program.statements[0] {
             assert!(r.token.literal == "return");
+            if r.value.is_some() {
+                let expression = *r.value.clone().unwrap();
+                let value = match expression {
+                    Expression::Integer(i) => TestValue::Int(i.value as i32),
+                    Expression::Bool(b) => TestValue::Bool(b.value),
+                    Expression::Identifier(i) => TestValue::String(i.value),
+                    _ => panic!("Not in test cases")
+                };
+                assert_eq!(value, expected, "return value is correct");
+            }
         } else {
             panic!("invalid return statement!");
         }
@@ -138,6 +161,7 @@ fn test_literal_expression(exp: &Expression, expected: TestValue) {
     }
 }
 
+#[derive(Debug, PartialEq)]
 enum TestValue {
     String(String),
     Bool(bool),
@@ -196,7 +220,7 @@ fn test_infix_expression(
     right: TestValue,
 ) {
     test_literal_expression(&expression.left, left);
-    assert_eq!(*operator, expression.operator);
+    assert_eq!(*operator, expression.operator, "infix expression");
     test_literal_expression(&expression.right, right);
 }
 
@@ -325,15 +349,15 @@ fn test_operator_precedence() {
         ("(5 + 5) * 2 * (5 + 5)", "(((5 + 5) * 2) * (5 + 5))"),
         ("-(5 + 5)", "(-(5 + 5))"),
         ("!(true == true)", "(!(true == true))"),
-        // ("a + add(b * c) + d", "((a + add((b * c))) + d)"),
-        // (
-        //     "add(a, b, 1, 2 * 3, 4 + 5, add(6, 7 * 8))",
-        //     "add(a, b, 1, (2 * 3), (4 + 5), add(6, (7 * 8)))",
-        // ),
-        // (
-        //     "add(a + b + c * d / f + g)",
-        //     "add((((a + b) + ((c * d) / f)) + g))",
-        // ),
+        ("a + add(b * c) + d", "((a + add((b * c))) + d)"),
+        (
+            "add(a, b, 1, 2 * 3, 4 + 5, add(6, 7 * 8))",
+            "add(a, b, 1, (2 * 3), (4 + 5), add(6, (7 * 8)))",
+        ),
+        (
+            "add(a + b + c * d / f + g)",
+            "add((((a + b) + ((c * d) / f)) + g))",
+        ),
     ];
 
     for (input, output) in test_cases {
@@ -471,5 +495,40 @@ fn test_parse_function_parameters() {
         } else {
             panic!("Invalid ExpressionStatement");
         }
+    }
+}
+
+#[test]
+fn test_call_espression_parsing() {
+    let input = "add(1, 2 * 3, 4 + 5);";
+
+    let mut lexer = Lexer::new(input.into());
+    let mut parser = Parser::new(&mut lexer);
+    let program = parser.parse_program();
+
+    assert_eq!(program.statements.len(), 1, "program length should be 1");
+
+    if let Statement::Expression(es) = &program.statements[0] {
+        if let Expression::Call(c) = &*es.expression {
+            if let Expression::Identifier(fi) = &*c.function {
+                assert_eq!(fi.value, "add", "function identifier should be 'add'");
+            } else {
+                panic!("expected function identifier")
+            }
+            assert_eq!(c.arguments.len(), 3, "should have 3 arguments");
+            test_literal_expression(&c.arguments[0], TestValue::Int(1));
+
+            if let Expression::Infix(ie) = &*c.arguments[1] {
+                test_infix_expression(&ie, TestValue::Int(2), &"*".to_string(), TestValue::Int(3));
+            }
+
+            if let Expression::Infix(ie) = &*c.arguments[2] {
+                test_infix_expression(&ie, TestValue::Int(4), &"+".to_string(), TestValue::Int(5));
+            }
+        } else {
+            panic!("Invalid CallExpression")
+        }
+    } else {
+        panic!("Invalid ExpressionStatement")
     }
 }

@@ -1,5 +1,5 @@
 use core::fmt;
-use std::{cell::RefCell, collections::HashMap, process::id};
+use std::{cell::RefCell, collections::HashMap};
 
 use crate::{
     ast::*,
@@ -80,6 +80,7 @@ impl<'a> Parser<'a> {
         parser.register_infix(NotEqual, |p, ex| p.parse_infix_expression(ex));
         parser.register_infix(LT, |p, ex| p.parse_infix_expression(ex));
         parser.register_infix(GT, |p, ex| p.parse_infix_expression(ex));
+        parser.register_infix(LParen, |p, ex| p.parse_call_expression(ex));
 
         // eat two tokens so the current_token and peek_token get set correctly
         parser.next_token();
@@ -97,11 +98,13 @@ impl<'a> Parser<'a> {
     }
 
     fn get_precedence(&self, tt: &TokenType) -> Option<OperatorPrecedence> {
+        use TokenType::*;
         match tt {
-            TokenType::Equal | TokenType::NotEqual => Some(OperatorPrecedence::Equals),
-            TokenType::LT | TokenType::GT => Some(OperatorPrecedence::LessGreater),
-            TokenType::Plus | TokenType::Minus => Some(OperatorPrecedence::Sum),
-            TokenType::Slash | TokenType::Asterisk => Some(OperatorPrecedence::Product),
+            Equal | NotEqual => Some(OperatorPrecedence::Equals),
+            LT | GT => Some(OperatorPrecedence::LessGreater),
+            Plus | Minus => Some(OperatorPrecedence::Sum),
+            Slash | Asterisk => Some(OperatorPrecedence::Product),
+            LParen => Some(OperatorPrecedence::Call),
             _ => None,
         }
     }
@@ -153,26 +156,28 @@ impl<'a> Parser<'a> {
             return Err(e);
         }
 
-        let id = Identifier {
+        let id = IdentifierExpression {
             token: self.current_token.clone(),
-            value: String::from(self.current_token.clone().literal),
+            value: String::from(self.current_token.literal.clone()),
         };
 
         if let Err(e) = self.expect_peek(TokenType::Assign) {
             return Err(e);
         }
 
-        // TODO: We're skipping the expressions until we
-        // encounter a semicolon
+        self.next_token();
+
+        let value = self.parse_expression(OperatorPrecedence::Lowest).unwrap();
+
+        
         if self.current_token.kind != TokenType::Semicolon {
             self.next_token();
-            self.next_token(); // TODO: remove me when we parse expressions.... i think... idk why I have to eat 2 tokens here? bug maybe?
         }
 
-        Ok(Statement::Let(Let {
+        Ok(Statement::Let(LetStatement {
             token: let_token,
             id,
-            // value: TODO once we add expressions
+            value: Box::new(value)
         }))
     }
 
@@ -181,13 +186,16 @@ impl<'a> Parser<'a> {
 
         self.next_token();
 
-        // TODO: We're skipping the expressions until we
-        // encounter a semicolon
+        let return_value = self.parse_expression(OperatorPrecedence::Lowest).unwrap();
+
         if self.current_token.kind != TokenType::Semicolon {
             self.next_token();
         }
 
-        let statement = Return { token };
+        let statement = Return {
+            token,
+            value: Some(Box::new(return_value)),
+        };
 
         Ok(Statement::Return(statement))
     }
@@ -210,7 +218,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_identifier(&mut self) -> Box<Expression> {
-        let id = Expression::Identifier(Identifier {
+        let id = Expression::Identifier(IdentifierExpression {
             token: self.current_token.clone(),
             value: self.current_token.literal.clone(),
         });
@@ -319,8 +327,8 @@ impl<'a> Parser<'a> {
         Box::new(Expression::If(if_expr))
     }
 
-    fn parse_function_parameters(&mut self) -> Vec<Identifier> {
-        let mut identifiers: Vec<Identifier> = vec![];
+    fn parse_function_parameters(&mut self) -> Vec<IdentifierExpression> {
+        let mut identifiers: Vec<IdentifierExpression> = vec![];
 
         if self.peek_token.kind == TokenType::RParen {
             self.next_token();
@@ -329,7 +337,7 @@ impl<'a> Parser<'a> {
 
         self.next_token();
 
-        identifiers.push(Identifier {
+        identifiers.push(IdentifierExpression {
             token: self.current_token.clone(),
             value: self.current_token.literal.clone(),
         });
@@ -337,7 +345,7 @@ impl<'a> Parser<'a> {
         while self.peek_token.kind == TokenType::Comma {
             self.next_token();
             self.next_token();
-            identifiers.push(Identifier {
+            identifiers.push(IdentifierExpression {
                 token: self.current_token.clone(),
                 value: self.current_token.literal.clone(),
             });
@@ -362,13 +370,13 @@ impl<'a> Parser<'a> {
         if let Err(e) = self.expect_peek(TokenType::LBrace) {
             panic!("Failed to parse function literal expression:\n {:?}", e);
         }
-        
+
         let body = self.parse_block_statement().unwrap();
 
         let literal = FunctionLiteral {
             token,
             parameters,
-            body
+            body,
         };
 
         Box::new(Expression::Function(literal))
@@ -392,6 +400,46 @@ impl<'a> Parser<'a> {
         };
 
         Box::new(Expression::Infix(expression))
+    }
+
+    fn parse_call_arguments(&mut self) -> Vec<Box<Expression>> {
+        let mut arguments: Vec<Box<Expression>> = vec![];
+
+        if self.peek_token.kind == TokenType::RParen {
+            self.next_token();
+            return arguments;
+        }
+
+        self.next_token();
+
+        arguments.push(Box::new(
+            self.parse_expression(OperatorPrecedence::Lowest).unwrap(),
+        ));
+
+        while self.peek_token.kind == TokenType::Comma {
+            self.next_token();
+            self.next_token();
+
+            arguments.push(Box::new(
+                self.parse_expression(OperatorPrecedence::Lowest).unwrap(),
+            ));
+        }
+
+        if let Err(e) = self.expect_peek(TokenType::RParen) {
+            panic!("Failed to parse call expression arguments:\n {:?}", e);
+        }
+
+        arguments
+    }
+
+    fn parse_call_expression(&mut self, function: Box<Expression>) -> Box<Expression> {
+        let expression = CallExpression {
+            token: self.current_token.clone(),
+            function,
+            arguments: self.parse_call_arguments(),
+        };
+
+        Box::new(Expression::Call(expression))
     }
 
     fn parse_expression(
