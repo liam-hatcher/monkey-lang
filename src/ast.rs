@@ -2,8 +2,6 @@ use crate::token::Token;
 
 pub trait ASTNode {
     fn to_string(&self) -> String;
-
-    // TODO.....
 }
 
 #[derive(Debug, Clone)]
@@ -29,8 +27,9 @@ impl ASTNode for LetStatement {
     fn to_string(&self) -> String {
         let literal = &self.token.literal;
         let name = &self.id.value;
+        let value = &*self.value.to_string();
 
-        format!("{literal} {name} = [PLACEHOLDER];")
+        format!("{literal} {name} = {value}")
     }
 }
 
@@ -154,7 +153,7 @@ impl ASTNode for FunctionLiteral {
             .join(", ");
 
         format!(
-            "{:?}({:?}){:?}",
+            "{}({}){}",
             self.token.literal,
             params,
             self.body.to_string()

@@ -15,7 +15,5 @@ fn main() {
 
     let prog = p.parse_program();
 
-    println!("CHECK IT {:?}", prog.to_string());
-
     start_repl();
 }
