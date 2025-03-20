@@ -3,6 +3,7 @@ pub enum ObjectType {
     Integer,
     Boolean,
     Return,
+    Error,
     Null,
 }
 
@@ -11,6 +12,7 @@ pub enum ObjectValue {
     Int(i64),
     Bool(bool),
     None,
+    Error(String),
     Null,
 }
 
@@ -19,6 +21,23 @@ pub trait Object {
     fn kind(&self) -> ObjectType;
     fn get_value(&self) -> ObjectValue {
         ObjectValue::None
+    }
+}
+
+pub struct Error {
+    pub message: String,
+}
+
+impl Object for Error {
+    fn inspect(&self) -> String {
+        format!("ERROR: {}", self.message)
+    }
+
+    fn kind(&self) -> ObjectType {
+        ObjectType::Error
+    }
+    fn get_value(&self) -> ObjectValue {
+        ObjectValue::Error(self.message.clone())
     }
 }
 

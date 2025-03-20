@@ -172,3 +172,49 @@ fn test_return_statements() {
         test_integer_object(&evaluated, evaluated.get_value(), expected);
     }
 }
+
+#[test]
+fn test_error_handling() {
+    let tests = [
+        ("5 + true;", "type mismatch: Integer + Boolean"),
+        ("5 + true; 5;", "type mismatch: Integer + Boolean"),
+        ("-true", "unknown operator: -Boolean"),
+        ("true + false;", "unknown operator: Boolean + Boolean"),
+        (
+            "true + false + true + false;",
+            "unknown operator: Boolean + Boolean",
+        ),
+        ("5; true + false; 5", "unknown operator: Boolean + Boolean"),
+        (
+            "if (10 > 1) { true + false; }",
+            "unknown operator: Boolean + Boolean",
+        ),
+        (
+            "
+if (10 > 1) {
+  if (10 > 1) {
+    return true + false;
+  }
+
+  return 1;
+}
+",
+            "unknown operator: Boolean + Boolean",
+        ),
+        // ("foobar", "identifier not found: foobar"),
+    ];
+
+    for (input, expected) in tests {
+        let evaluated = test_eval(input);
+
+        if evaluated.kind() != ObjectType::Error {
+            panic!("Expected Error type, but got {:?}", evaluated.kind());
+        }
+
+        assert_eq!(
+            evaluated.get_value(),
+            ObjectValue::Error(expected.into()),
+            "Errors do not match"
+        );
+    }
+}

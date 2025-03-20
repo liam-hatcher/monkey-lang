@@ -1,6 +1,6 @@
 use crate::{
     ast::{BlockStatement, Expression, IfExpression, Node, Statement},
-    object::{Boolean, Integer, Null, Object, ObjectType, ObjectValue, Return},
+    object::{Boolean, Error, Integer, Null, Object, ObjectType, ObjectValue, Return},
 };
 
 fn is_truthy(condition: Box<dyn Object>) -> bool {
@@ -13,6 +13,9 @@ fn is_truthy(condition: Box<dyn Object>) -> bool {
 
 fn eval_if_expression(if_expression: IfExpression) -> Box<dyn Object> {
     let condition = eval(Node::Expression(*if_expression.condition));
+    if is_error(&condition) {
+        return condition;
+    }
 
     if is_truthy(condition) {
         return eval(Node::Statement(Statement::Block(
@@ -27,7 +30,7 @@ fn eval_if_expression(if_expression: IfExpression) -> Box<dyn Object> {
     }
 }
 
-fn unwrap_int(node: Box<dyn Object>) -> i64 {
+fn unwrap_int(node: &Box<dyn Object>) -> i64 {
     match node.get_value() {
         ObjectValue::Int(i) => i,
         _ => unreachable!("something has gone wrong"),
@@ -39,35 +42,42 @@ fn eval_integer_infix_expression(
     left: Box<dyn Object>,
     right: Box<dyn Object>,
 ) -> Box<dyn Object> {
-    let left = unwrap_int(left);
-    let right = unwrap_int(right);
+    let l = unwrap_int(&left);
+    let r = unwrap_int(&right);
 
     match operator {
         "+" => Box::new(Integer {
-            value: left + right,
+            value: l + r,
         }),
         "-" => Box::new(Integer {
-            value: left - right,
+            value: l - r,
         }),
         "*" => Box::new(Integer {
-            value: left * right,
+            value: l * r,
         }),
         "/" => Box::new(Integer {
-            value: left / right,
+            value: l / r,
         }),
         "<" => Box::new(Boolean {
-            value: left < right,
+            value: l < r,
         }),
         ">" => Box::new(Boolean {
-            value: left > right,
+            value: l > r,
         }),
         "==" => Box::new(Boolean {
-            value: left == right,
+            value: l == r,
         }),
         "!=" => Box::new(Boolean {
-            value: left != right,
+            value: l != r,
         }),
-        _ => Box::new(Null),
+        _ => Box::new(Error {
+            message: format!(
+                "unknown operator: {:?} {} {:?}",
+                left.kind(),
+                operator,
+                right.kind()
+            ),
+        }),
     }
 }
 
@@ -92,7 +102,20 @@ fn eval_infix_expression(
         });
     }
 
-    Box::new(Null)
+    if left.kind() != right.kind() {
+        return Box::new(Error {
+            message: format!("type mismatch: {:?} + {:?}", left.kind(), right.kind()),
+        });
+    }
+
+    Box::new(Error {
+        message: format!(
+            "unknown operator: {:?} {} {:?}",
+            left.kind(),
+            operator,
+            right.kind()
+        ),
+    })
 }
 
 fn eval_bang_operator(right: Box<dyn Object>) -> Box<dyn Object> {
@@ -108,7 +131,9 @@ fn eval_bang_operator(right: Box<dyn Object>) -> Box<dyn Object> {
 
 fn eval_minus_prefix_operator_expression(right: Box<dyn Object>) -> Box<dyn Object> {
     if right.kind() != ObjectType::Integer {
-        Box::new(Null)
+        Box::new(Error {
+            message: format!("unknown operator: -{:?}", right.kind()),
+        })
     } else {
         let ObjectValue::Int(value) = right.get_value() else {
             panic!("expected integer, got {:?}", right.get_value());
@@ -121,7 +146,9 @@ fn eval_prefix_expression(operator: &str, right: Box<dyn Object>) -> Box<dyn Obj
     match operator {
         "!" => eval_bang_operator(right),
         "-" => eval_minus_prefix_operator_expression(right),
-        _ => Box::new(Null),
+        _ => Box::new(Error {
+            message: format!("unknown operator: {}{:?}", operator, right.kind()),
+        }),
     }
 }
 
@@ -130,7 +157,7 @@ fn eval_block_statement(block: BlockStatement) -> Box<dyn Object> {
     for s in *block.statements {
         result = eval(Node::Statement(s));
 
-        if result.kind() == ObjectType::Return {
+        if result.kind() == ObjectType::Return || result.kind() == ObjectType::Error {
             return result;
         }
     }
@@ -143,17 +170,23 @@ fn eval_program(statements: Vec<Statement>) -> Box<dyn Object> {
     for s in statements {
         result = eval(Node::Statement(s));
 
-        if result.kind() == ObjectType::Return {
-            return match result.get_value() {
+        match result.kind() {
+            ObjectType::Return => return match result.get_value() {
                 ObjectValue::Int(i) => Box::new(Integer { value: i }),
                 ObjectValue::Bool(b) => Box::new(Boolean { value: b }),
                 ObjectValue::Null => Box::new(Null),
                 _ => panic!("unexpected expression in return statement"),
-            };
+            },
+            ObjectType::Error => return result,
+            _ => continue
         }
     }
 
     result
+}
+
+fn is_error(obj: &Box<dyn Object>) -> bool {
+    obj.kind() == ObjectType::Error
 }
 
 pub fn eval(node: Node) -> Box<dyn Object> {
@@ -168,11 +201,14 @@ pub fn eval(node: Node) -> Box<dyn Object> {
             Statement::Let(let_statement) => todo!(),
 
             Statement::Return(return_statement) => {
-                let value = if return_statement.value.is_some() {
-                    eval(Node::Expression(*return_statement.value.unwrap()))
-                } else {
-                    Box::new(Null)
-                };
+                let mut value: Box<dyn Object> = Box::new(Null);
+
+                if return_statement.value.is_some() {
+                    value = eval(Node::Expression(*return_statement.value.unwrap()));
+                }
+                if is_error(&value) {
+                    return value;
+                }
                 return Box::new(Return { value });
             }
 
@@ -194,12 +230,24 @@ pub fn eval(node: Node) -> Box<dyn Object> {
 
             Expression::Prefix(prefix_expression) => {
                 let right = eval(Node::Expression(*prefix_expression.right));
+
+                if is_error(&right) {
+                    return right;
+                }
+
                 return eval_prefix_expression(&prefix_expression.operator, right);
             }
 
             Expression::Infix(infix_expression) => {
                 let left = eval(Node::Expression(*infix_expression.left));
+                if is_error(&left) {
+                    return left;
+                }
+
                 let right = eval(Node::Expression(*infix_expression.right));
+                if is_error(&right) {
+                    return right;
+                }
                 return eval_infix_expression(&infix_expression.operator, left, right);
             }
 
