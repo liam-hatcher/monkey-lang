@@ -1,8 +1,19 @@
 use crate::{
-    ast::{Expression, InfixExpression, Statement},
+    ast::{Expression, InfixExpression, Node, Program, Statement},
     lexer::Lexer,
     parser::Parser,
 };
+
+fn get_program(input: &str) -> Program {
+    let mut lexer = Lexer::new(input.to_string());
+    let mut parser = Parser::new(&mut lexer);
+    let program = parser.parse_program();
+
+    match program {
+        Node::Program(p) => p,
+        _ => panic!("failed to parse program")
+    }
+}
 
 fn test_let_statement(statement: &Statement, expected_id: &str) {
     if let Statement::Let(s) = statement {
@@ -26,9 +37,7 @@ fn test_let_statements() {
     ];
 
     for (input, expected_identifier, expected_value) in tests {
-        let mut lexer = Lexer::new(input.to_string());
-        let mut parser = Parser::new(&mut lexer);
-        let program = parser.parse_program();
+        let program = get_program(input);
 
         assert_eq!(
             program.statements.len(),
@@ -65,9 +74,7 @@ fn test_return_statements() {
     ];
 
     for (input, expected) in tests {
-        let mut lexer = Lexer::new(input.to_string());
-        let mut parser = Parser::new(&mut lexer);
-        let program = parser.parse_program();
+        let program = get_program(input);
 
         assert_eq!(program.statements.len(), 1, "Expected 1 statement");
 
@@ -95,9 +102,7 @@ fn test_return_statements() {
 fn test_identifier_expression() {
     let input = "foobar;";
 
-    let mut lexer = Lexer::new(input.into());
-    let mut parser = Parser::new(&mut lexer);
-    let program = parser.parse_program();
+    let program = get_program(input);
 
     assert_eq!(
         program.statements.len(),
@@ -127,9 +132,7 @@ fn test_identifier_expression() {
 fn test_integer_literal_expression() {
     let input = "5;";
 
-    let mut lexer = Lexer::new(input.into());
-    let mut parser = Parser::new(&mut lexer);
-    let program = parser.parse_program();
+    let program = get_program(input);
 
     assert_eq!(
         program.statements.len(),
@@ -206,10 +209,7 @@ fn test_prefix_expressions() {
     ];
 
     for (input, operator, value) in test_cases {
-        let mut lexer = Lexer::new(input.into());
-        let mut parser = Parser::new(&mut lexer);
-        let program = parser.parse_program();
-
+        let program = get_program(input);
         assert_eq!(program.statements.len(), 1, "Expected exactly one statement");
 
         let statement = match &program.statements[0] {
@@ -322,9 +322,7 @@ fn test_infix_expresions() {
     ];
 
     for (input, left, operator, right) in infix_tests {
-        let mut lexer = Lexer::new(input.into());
-        let mut parser = Parser::new(&mut lexer);
-        let program = parser.parse_program();
+        let program = get_program(input);
 
         assert_eq!(program.statements.len(), 1, "program length should be 1");
 
@@ -379,9 +377,7 @@ fn test_operator_precedence() {
     ];
 
     for (input, output) in test_cases {
-        let mut lexer = Lexer::new(input.into());
-        let mut parser = Parser::new(&mut lexer);
-        let program = parser.parse_program();
+        let program = get_program(input);
 
         assert_eq!(program.to_string(), output, "Program matches output");
     }
@@ -391,9 +387,7 @@ fn test_operator_precedence() {
 fn test_if_expression() {
     let input = "if (x < y) { x }";
 
-    let mut lexer = Lexer::new(input.into());
-    let mut parser = Parser::new(&mut lexer);
-    let program = parser.parse_program();
+    let program = get_program(input);
 
     assert_eq!(program.statements.len(), 1, "program length should be 1");
 
@@ -431,9 +425,7 @@ fn test_if_expression() {
 fn test_function_literal() {
     let input = "fn(x, y) { x + y; }";
 
-    let mut lexer = Lexer::new(input.into());
-    let mut parser = Parser::new(&mut lexer);
-    let program = parser.parse_program();
+    let program = get_program(input);
 
     assert_eq!(program.statements.len(), 1, "program length should be 1");
 
@@ -488,10 +480,8 @@ fn test_parse_function_parameters() {
         },
     ];
 
-    for (test) in tests {
-        let mut lexer = Lexer::new(test.input);
-        let mut parser = Parser::new(&mut lexer);
-        let program = parser.parse_program();
+    for test in tests {
+        let program = get_program(&test.input);
 
         if let Statement::Expression(es) = &program.statements[0] {
             if let Expression::Function(f) = &*es.expression {
@@ -520,9 +510,7 @@ fn test_parse_function_parameters() {
 fn test_call_espression_parsing() {
     let input = "add(1, 2 * 3, 4 + 5);";
 
-    let mut lexer = Lexer::new(input.into());
-    let mut parser = Parser::new(&mut lexer);
-    let program = parser.parse_program();
+    let program = get_program(input);
 
     assert_eq!(program.statements.len(), 1, "program length should be 1");
 

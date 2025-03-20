@@ -34,12 +34,12 @@ impl ASTNode for LetStatement {
 }
 
 #[derive(Debug, Clone)]
-pub struct Return {
+pub struct ReturnStatement {
     pub token: Token,
     pub value: Option<Box<Expression>>,
 }
 
-impl ASTNode for Return {
+impl ASTNode for ReturnStatement {
     fn to_string(&self) -> String {
         let literal = &self.token.literal;
         if self.value.is_some() {
@@ -241,7 +241,7 @@ impl ASTNode for BlockStatement {
 #[derive(Debug, Clone)]
 pub enum Statement {
     Let(LetStatement),
-    Return(Return),
+    Return(ReturnStatement),
     // The most basic kind of expression is a statement
     // e.g.
     // x + 10;
@@ -274,4 +274,10 @@ impl Program {
 
         output
     }
+}
+
+pub enum Node {
+    Program(Program),
+    Statement(Statement),
+    Expression(Expression)
 }

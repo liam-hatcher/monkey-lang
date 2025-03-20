@@ -1,6 +1,6 @@
 use std::io::{self, Write};
 
-use crate::{lexer::Lexer, parser::{self, Parser}};
+use crate::{evaluator::eval, lexer::Lexer, parser::{self, Parser}};
 
 
 const MONKEY_FACE: &str = r#"            
@@ -40,6 +40,12 @@ pub fn start_repl() {
             for e in parser.errors.iter() {
                 println!("\t {}", e);
             }
+            continue;
         }
+
+        let evaluated = eval(program);
+        let output = evaluated.inspect();
+
+        println!("{}", output);
     }
 }

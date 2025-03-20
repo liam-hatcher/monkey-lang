@@ -24,7 +24,7 @@ type PrefixOptionalParseFn = fn(&mut Parser) -> Option<Box<Expression>>;
 // This feels really clumsy.
 enum ParseFn {
     Prefix(PrefixParseFn),
-    PrefixOptional(PrefixOptionalParseFn)
+    PrefixOptional(PrefixOptionalParseFn),
 }
 type InfixParseFn = fn(&mut Parser, Box<Expression>) -> Box<Expression>;
 
@@ -78,9 +78,15 @@ impl<'a> Parser<'a> {
         parser.register_prefix(Minus, ParseFn::Prefix(|p| p.parse_prefix_expression()));
         parser.register_prefix(True, ParseFn::Prefix(|p| p.parse_boolean()));
         parser.register_prefix(False, ParseFn::Prefix(|p| p.parse_boolean()));
-        parser.register_prefix(LParen, ParseFn::PrefixOptional(|p| p.parse_grouped_expression()));
+        parser.register_prefix(
+            LParen,
+            ParseFn::PrefixOptional(|p| p.parse_grouped_expression()),
+        );
         parser.register_prefix(If, ParseFn::PrefixOptional(|p| p.parse_if_expression()));
-        parser.register_prefix(Function, ParseFn::PrefixOptional(|p| p.parse_function_literal()));
+        parser.register_prefix(
+            Function,
+            ParseFn::PrefixOptional(|p| p.parse_function_literal()),
+        );
 
         parser.register_infix(Plus, |p, ex| p.parse_infix_expression(ex));
         parser.register_infix(Minus, |p, ex| p.parse_infix_expression(ex));
@@ -174,7 +180,7 @@ impl<'a> Parser<'a> {
         };
 
         if !self.expect_peek(TokenType::Assign) {
-            return None
+            return None;
         }
 
         self.next_token();
@@ -203,7 +209,7 @@ impl<'a> Parser<'a> {
             self.next_token();
         }
 
-        let statement = Return {
+        let statement = ReturnStatement {
             token,
             value: Some(Box::new(return_value)),
         };
@@ -241,14 +247,18 @@ impl<'a> Parser<'a> {
         let literal = self.current_token.literal.clone();
         let value = literal.parse::<i64>();
 
-        if let Ok(int_literal) = value {
-            Some(Box::new(Expression::Integer(IntegerLiteral {
-                token: self.current_token.clone(),
-                value: int_literal,
-            })))
-        } else {
-            self.errors.push(format!("could not parse {:?} as integer", literal));
-            return None;
+        match value {
+            Ok(int_literal) => {
+                Some(Box::new(Expression::Integer(IntegerLiteral {
+                    token: self.current_token.clone(),
+                    value: int_literal,
+                })))
+            }
+            Err(e) => {
+                self.errors
+                    .push(format!("could not parse {:?} as integer \n\t {}", literal, e));
+                None
+            }
         }
     }
 
@@ -392,7 +402,7 @@ impl<'a> Parser<'a> {
             body,
         };
 
-       Some( Box::new(Expression::Function(literal)))
+        Some(Box::new(Expression::Function(literal)))
     }
 
     fn parse_infix_expression(&mut self, left: Box<Expression>) -> Box<Expression> {
@@ -459,7 +469,6 @@ impl<'a> Parser<'a> {
         let prefix = self.prefix_parse_fns.get(&self.current_token.kind);
 
         if prefix.is_none() {
-            // return Err(ParserError::ParseExpressionFail); // should be impossible
             self.errors.push(format!(
                 "no prefix parse function for {:?} found",
                 &self.current_token.kind
@@ -467,13 +476,10 @@ impl<'a> Parser<'a> {
             return None;
         }
 
-        // let mut left = prefix.unwrap()(self);
         let mut left = match *prefix.unwrap() {
             ParseFn::Prefix(p) => p(self),
-            ParseFn::PrefixOptional(p) => p(self)?
+            ParseFn::PrefixOptional(p) => p(self)?,
         };
-
-
 
         while self.peek_token.kind != TokenType::Semicolon && precedence < self.peek_precedence() {
             // This whole infix block requires some more thought. This is the "least bad" approach I
@@ -528,19 +534,19 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn parse_program(&mut self) -> Program {
+    pub fn parse_program(&mut self) -> Node {
         let mut statements: Vec<Statement> = vec![];
 
         while self.current_token.clone().kind != TokenType::EOF {
             let statement = self.parse_statement();
             if statement.is_some() {
                 statements.push(statement.unwrap());
-            } 
+            }
 
             self.next_token();
         }
 
-        Program { statements }
+        Node::Program(Program { statements })
     }
 }
 
