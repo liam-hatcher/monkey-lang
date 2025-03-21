@@ -21,7 +21,7 @@ const MONKEY_FACE: &str = r#"
 "#;
 
 pub fn start_repl() {
-    let environment = Rc::new(RefCell::new(Environment::new()));
+    let environment = Environment::new();
     loop {
         print!("monkey >>");
 

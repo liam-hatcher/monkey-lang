@@ -1,5 +1,10 @@
+use environment::SharedEnvironment;
+
+use crate::ast::{ASTNode, BlockStatement, IdentifierExpression};
+
 #[derive(PartialEq, Debug)]
 pub enum ObjectType {
+    Function,
     Integer,
     Boolean,
     Return,
@@ -13,10 +18,11 @@ pub enum ObjectValue {
     Bool(bool),
     None,
     Error(String),
+    Function,
     Null,
 }
 
-trait CloneBox {
+pub trait CloneBox {
     fn clone_box(&self) -> Box<dyn Object>;
 }
 
@@ -37,6 +43,53 @@ pub trait Object: CloneBox {
     fn kind(&self) -> ObjectType;
     fn get_value(&self) -> ObjectValue {
         ObjectValue::None
+    }
+    fn get_fn_object(&self) -> Option<Function> {
+        None
+    }
+    fn get_return_value(&self) -> Option<Box<dyn Object>> {
+        None
+    }
+}
+
+pub struct Function {
+    pub parameters: Vec<IdentifierExpression>,
+    pub body: Box<BlockStatement>,
+    pub env: SharedEnvironment,
+}
+
+impl Object for Function {
+    fn inspect(&self) -> String {
+        let params = self
+            .parameters
+            .iter()
+            .map(|p| p.value.clone())
+            .collect::<Vec<String>>()
+            .join(", ");
+
+        format!("fn({}) {{\n{}\n}}",  params, &*self.body.to_string())
+    }
+
+    fn kind(&self) -> ObjectType {
+        ObjectType::Function
+    }
+
+    fn get_fn_object(&self) -> Option<Function> {
+        Some(Function {
+            parameters: self.parameters.clone(),
+            body: self.body.clone(),
+            env: self.env.clone()
+        })
+    }
+}
+
+impl CloneBox for Function {
+    fn clone_box(&self) -> Box<dyn Object> {
+        Box::new(Self {
+            parameters: self.parameters.clone(),
+            body: self.body.clone(),
+            env: self.env.clone()
+        })
     }
 }
 
@@ -85,6 +138,9 @@ impl Object for Return {
             ObjectValue::Null => ObjectValue::Null,
             _ => ObjectValue::None,
         }
+    }
+    fn get_return_value(&self) -> Option<Box<dyn Object>> {
+         Some(self.value.clone_box())
     }
 }
 

@@ -1,6 +1,7 @@
 use std::{cell::RefCell, rc::Rc};
 
 use crate::{
+    ast::ASTNode,
     lexer::Lexer,
     object::{Object, ObjectType, ObjectValue, environment::Environment},
     parser::Parser,
@@ -12,7 +13,7 @@ fn test_eval(input: &str) -> Box<dyn Object> {
     let mut lexer = Lexer::new(input.into());
     let mut parser = Parser::new(&mut lexer);
     let program = parser.parse_program();
-    let env = Rc::new(RefCell::new(Environment::new()));
+    let env = Environment::new();
 
     eval(program, env)
 }
@@ -234,6 +235,52 @@ fn test_let_statements() {
     for (input, expected) in tests {
         let evaluated = test_eval(input);
 
+        test_integer_object(&evaluated, evaluated.get_value(), expected);
+    }
+}
+
+#[test]
+fn test_function_object() {
+    let input = "fn(x) { x + 2; };";
+
+    let evaluated = test_eval(input);
+
+    assert_eq!(
+        evaluated.kind(),
+        ObjectType::Function,
+        "expected a function object"
+    );
+
+    let function = evaluated.get_fn_object().unwrap();
+
+    assert!(function.parameters.len() == 1, "one parameter found");
+
+    let param = function.parameters[0].to_string();
+
+    assert_eq!(param, "x", "parameter is not 'x', got {}", param);
+
+    let expected_body = "(x + 2)";
+
+    assert_eq!(
+        function.body.to_string(),
+        expected_body,
+        "function body does not match"
+    );
+}
+
+#[test]
+fn test_function_application() {
+    let tests = [
+        ("let identity = fn(x) { x; }; identity(5);", 5),
+        ("let identity = fn(x) { return x; }; identity(5);", 5),
+        ("let double = fn(x) { x * 2; }; double(5);", 10),
+        ("let add = fn(x, y) { x + y; }; add(5, 5);", 10),
+        ("let add = fn(x, y) { x + y; }; add(5 + 5, add(5, 5));", 20),
+        ("fn(x) { x; }(5)", 5),
+    ];
+
+    for (input, expected) in tests {
+        let evaluated = test_eval(input);
         test_integer_object(&evaluated, evaluated.get_value(), expected);
     }
 }

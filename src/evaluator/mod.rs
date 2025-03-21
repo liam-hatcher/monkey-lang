@@ -2,7 +2,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use crate::{
     ast::{BlockStatement, Expression, IdentifierExpression, IfExpression, Node, Statement},
-    object::{Boolean, Error, Integer, Null, Object, ObjectType, ObjectValue, Return},
+    object::{Boolean, Error, Function, Integer, Null, Object, ObjectType, ObjectValue, Return},
 };
 
 use crate::object::environment::*;
@@ -124,11 +124,11 @@ fn eval_identifier(id: IdentifierExpression, env: SharedEnvironment) -> Box<dyn 
 
     if value.is_none() {
         return Box::new(Error {
-            message: format!("identifier not found: {}", id.value)
-        })
+            message: format!("identifier not found: {}", id.value),
+        });
     }
 
-    return value.unwrap()
+    return value.unwrap();
 }
 
 fn eval_minus_prefix_operator_expression(right: Box<dyn Object>) -> Box<dyn Object> {
@@ -165,6 +165,55 @@ fn eval_block_statement(block: BlockStatement, env: SharedEnvironment) -> Box<dy
     }
 
     result
+}
+
+fn eval_expressions(args: Vec<Box<Expression>>, env: SharedEnvironment) -> Vec<Box<dyn Object>> {
+    let mut result: Vec<Box<dyn Object>> = vec![];
+
+    for expr in args {
+        let evaluated = eval(Node::Expression(*expr), env.clone());
+        if is_error(&evaluated) {
+            result.push(evaluated);
+            return result;
+        }
+        result.push(evaluated);
+    }
+
+    result
+}
+
+fn extend_function_env(function: Box<dyn Object>, args: Vec<Box<dyn Object>>) -> SharedEnvironment {
+    let func = function.get_fn_object().unwrap();
+    let env = Environment::new_enclosed(func.env);
+
+    for (idx, param) in func.parameters.iter().enumerate() {
+        env.borrow_mut().set(param.value.clone(), args[idx].clone_box());
+    }
+
+    env
+}
+
+fn unwrap_return_value(object: Box<dyn Object>) -> Box<dyn Object> {
+    if object.kind() == ObjectType::Return {
+        return object.get_return_value().unwrap();
+    }
+
+    object
+}
+
+fn apply_function(func: Box<dyn Object>, args: Vec<Box<dyn Object>>) -> Box<dyn Object> {
+    let function = func.get_fn_object();
+    if function.is_none() {
+        // can this ever actually happen?
+        return Box::new(Error {
+            message: format!("not a function: {:?}", func.kind())
+        })
+    }
+
+    let extended_env = extend_function_env(func, args);
+    let evaluated = eval(Node::Statement(Statement::Block(*function.unwrap().body)), extended_env);
+
+    unwrap_return_value(evaluated)
 }
 
 fn eval_program(statements: Vec<Statement>, env: SharedEnvironment) -> Box<dyn Object> {
@@ -229,7 +278,9 @@ pub fn eval(node: Node, env: SharedEnvironment) -> Box<dyn Object> {
         },
 
         Node::Expression(expression) => match expression {
-            Expression::Identifier(identifier_expression) => eval_identifier(identifier_expression, env),
+            Expression::Identifier(identifier_expression) => {
+                eval_identifier(identifier_expression, env)
+            }
 
             Expression::Bool(boolean_expression) => Box::new(Boolean {
                 // todo: figure out how to return the same shared reference,
@@ -266,9 +317,24 @@ pub fn eval(node: Node, env: SharedEnvironment) -> Box<dyn Object> {
 
             Expression::If(if_expression) => eval_if_expression(if_expression, env),
 
-            Expression::Function(function_literal) => todo!(),
+            Expression::Function(function_literal) => Box::new(Function {
+                parameters: function_literal.parameters,
+                body: function_literal.body.clone(),
+                env,
+            }),
 
-            Expression::Call(call_expression) => todo!(),
+            Expression::Call(call_expression) => {
+                let function = eval(Node::Expression(*call_expression.function), env.clone());
+                if is_error(&function) {
+                    return function;
+                }
+                let args = eval_expressions(call_expression.arguments, env);
+                if args.len() == 1 && is_error(&args[0]) {
+                    return args[0].clone();
+                }
+
+                return apply_function(function, args);
+            }
         },
     }
 }
