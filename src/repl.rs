@@ -1,7 +1,10 @@
-use std::io::{self, Write};
+use std::{
+    cell::RefCell,
+    io::{self, Write},
+    rc::Rc,
+};
 
-use crate::{evaluator::eval, lexer::Lexer, parser::{self, Parser}};
-
+use crate::{evaluator::eval, lexer::Lexer, object::environment::Environment, parser::Parser};
 
 const MONKEY_FACE: &str = r#"            
             __,__
@@ -18,16 +21,16 @@ const MONKEY_FACE: &str = r#"
 "#;
 
 pub fn start_repl() {
-    
+    let environment = Rc::new(RefCell::new(Environment::new()));
     loop {
         print!("monkey >>");
 
         io::stdout().flush().unwrap();
 
         let mut input = String::new();
-        
+
         io::stdin().read_line(&mut input).unwrap();
-        
+
         let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
 
@@ -42,10 +45,10 @@ pub fn start_repl() {
             }
             continue;
         }
-
-        let evaluated = eval(program);
+        
+        let evaluated = eval(program, environment.clone());
         let output = evaluated.inspect();
-
+        
         println!("{}", output);
     }
 }

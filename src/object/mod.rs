@@ -16,7 +16,23 @@ pub enum ObjectValue {
     Null,
 }
 
-pub trait Object {
+trait CloneBox {
+    fn clone_box(&self) -> Box<dyn Object>;
+}
+
+impl<T: 'static + Object + Clone> CloneBox for T {
+    fn clone_box(&self) -> Box<dyn Object> {
+        Box::new(self.clone())
+    }
+}
+
+impl Clone for Box<dyn Object> {
+    fn clone(&self) -> Self {
+        self.clone_box()
+    }
+}
+
+pub trait Object: CloneBox {
     fn inspect(&self) -> String;
     fn kind(&self) -> ObjectType;
     fn get_value(&self) -> ObjectValue {
@@ -41,6 +57,14 @@ impl Object for Error {
     }
 }
 
+impl CloneBox for Error {
+    fn clone_box(&self) -> Box<dyn Object> {
+        Box::new(Self {
+            message: self.message.clone(),
+        })
+    }
+}
+
 pub struct Return {
     pub value: Box<dyn Object>,
 }
@@ -59,8 +83,16 @@ impl Object for Return {
             ObjectValue::Int(i) => ObjectValue::Int(i),
             ObjectValue::Bool(b) => ObjectValue::Bool(b),
             ObjectValue::Null => ObjectValue::Null,
-            _ => ObjectValue::None
+            _ => ObjectValue::None,
         }
+    }
+}
+
+impl CloneBox for Return {
+    fn clone_box(&self) -> Box<dyn Object> {
+        Box::new(Self {
+            value: self.value.clone_box(),
+        })
     }
 }
 
@@ -77,6 +109,14 @@ impl Object for Integer {
     }
     fn get_value(&self) -> ObjectValue {
         ObjectValue::Int(self.value)
+    }
+}
+
+impl CloneBox for Integer {
+    fn clone_box(&self) -> Box<dyn Object> {
+        Box::new(Self {
+            value: self.value.clone(),
+        })
     }
 }
 
@@ -99,6 +139,14 @@ impl Object for Boolean {
     }
 }
 
+impl CloneBox for Boolean {
+    fn clone_box(&self) -> Box<dyn Object> {
+        Box::new(Self {
+            value: self.value.clone(),
+        })
+    }
+}
+
 pub struct Null;
 
 impl Object for Null {
@@ -112,3 +160,11 @@ impl Object for Null {
         ObjectValue::Null
     }
 }
+
+impl CloneBox for Null {
+    fn clone_box(&self) -> Box<dyn Object> {
+        Box::new(Self)
+    }
+}
+
+pub mod environment;

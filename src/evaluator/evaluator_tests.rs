@@ -1,6 +1,8 @@
+use std::{cell::RefCell, rc::Rc};
+
 use crate::{
     lexer::Lexer,
-    object::{Object, ObjectType, ObjectValue},
+    object::{Object, ObjectType, ObjectValue, environment::Environment},
     parser::Parser,
 };
 
@@ -10,8 +12,9 @@ fn test_eval(input: &str) -> Box<dyn Object> {
     let mut lexer = Lexer::new(input.into());
     let mut parser = Parser::new(&mut lexer);
     let program = parser.parse_program();
+    let env = Rc::new(RefCell::new(Environment::new()));
 
-    eval(program)
+    eval(program, env)
 }
 
 fn test_integer_object(obj: &Box<dyn Object>, value: ObjectValue, expected: i64) {
@@ -201,7 +204,7 @@ if (10 > 1) {
 ",
             "unknown operator: Boolean + Boolean",
         ),
-        // ("foobar", "identifier not found: foobar"),
+        ("foobar", "identifier not found: foobar"),
     ];
 
     for (input, expected) in tests {
@@ -216,5 +219,21 @@ if (10 > 1) {
             ObjectValue::Error(expected.into()),
             "Errors do not match"
         );
+    }
+}
+
+#[test]
+fn test_let_statements() {
+    let tests = [
+        ("let a = 5; a;", 5),
+        ("let a = 5 * 5; a;", 25),
+        ("let a = 5; let b = a; b;", 5),
+        ("let a = 5; let b = a; let c = a + b + 5; c;", 15),
+    ];
+
+    for (input, expected) in tests {
+        let evaluated = test_eval(input);
+
+        test_integer_object(&evaluated, evaluated.get_value(), expected);
     }
 }

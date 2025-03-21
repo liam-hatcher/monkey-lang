@@ -1,7 +1,11 @@
+use std::{cell::RefCell, rc::Rc};
+
 use crate::{
-    ast::{BlockStatement, Expression, IfExpression, Node, Statement},
+    ast::{BlockStatement, Expression, IdentifierExpression, IfExpression, Node, Statement},
     object::{Boolean, Error, Integer, Null, Object, ObjectType, ObjectValue, Return},
 };
+
+use crate::object::environment::*;
 
 fn is_truthy(condition: Box<dyn Object>) -> bool {
     match condition.get_value() {
@@ -11,20 +15,22 @@ fn is_truthy(condition: Box<dyn Object>) -> bool {
     }
 }
 
-fn eval_if_expression(if_expression: IfExpression) -> Box<dyn Object> {
-    let condition = eval(Node::Expression(*if_expression.condition));
+fn eval_if_expression(if_expression: IfExpression, env: SharedEnvironment) -> Box<dyn Object> {
+    let condition = eval(Node::Expression(*if_expression.condition), env.clone());
     if is_error(&condition) {
         return condition;
     }
 
     if is_truthy(condition) {
-        return eval(Node::Statement(Statement::Block(
-            *if_expression.consequence.unwrap(),
-        )));
+        return eval(
+            Node::Statement(Statement::Block(*if_expression.consequence.unwrap())),
+            env,
+        );
     } else if if_expression.alternative.is_some() {
-        return eval(Node::Statement(Statement::Block(
-            *if_expression.alternative.unwrap(),
-        )));
+        return eval(
+            Node::Statement(Statement::Block(*if_expression.alternative.unwrap())),
+            env,
+        );
     } else {
         return Box::new(Null);
     }
@@ -46,30 +52,14 @@ fn eval_integer_infix_expression(
     let r = unwrap_int(&right);
 
     match operator {
-        "+" => Box::new(Integer {
-            value: l + r,
-        }),
-        "-" => Box::new(Integer {
-            value: l - r,
-        }),
-        "*" => Box::new(Integer {
-            value: l * r,
-        }),
-        "/" => Box::new(Integer {
-            value: l / r,
-        }),
-        "<" => Box::new(Boolean {
-            value: l < r,
-        }),
-        ">" => Box::new(Boolean {
-            value: l > r,
-        }),
-        "==" => Box::new(Boolean {
-            value: l == r,
-        }),
-        "!=" => Box::new(Boolean {
-            value: l != r,
-        }),
+        "+" => Box::new(Integer { value: l + r }),
+        "-" => Box::new(Integer { value: l - r }),
+        "*" => Box::new(Integer { value: l * r }),
+        "/" => Box::new(Integer { value: l / r }),
+        "<" => Box::new(Boolean { value: l < r }),
+        ">" => Box::new(Boolean { value: l > r }),
+        "==" => Box::new(Boolean { value: l == r }),
+        "!=" => Box::new(Boolean { value: l != r }),
         _ => Box::new(Error {
             message: format!(
                 "unknown operator: {:?} {} {:?}",
@@ -129,6 +119,18 @@ fn eval_bang_operator(right: Box<dyn Object>) -> Box<dyn Object> {
     }
 }
 
+fn eval_identifier(id: IdentifierExpression, env: SharedEnvironment) -> Box<dyn Object> {
+    let value = env.borrow().get(&id.value);
+
+    if value.is_none() {
+        return Box::new(Error {
+            message: format!("identifier not found: {}", id.value)
+        })
+    }
+
+    return value.unwrap()
+}
+
 fn eval_minus_prefix_operator_expression(right: Box<dyn Object>) -> Box<dyn Object> {
     if right.kind() != ObjectType::Integer {
         Box::new(Error {
@@ -152,10 +154,10 @@ fn eval_prefix_expression(operator: &str, right: Box<dyn Object>) -> Box<dyn Obj
     }
 }
 
-fn eval_block_statement(block: BlockStatement) -> Box<dyn Object> {
+fn eval_block_statement(block: BlockStatement, env: SharedEnvironment) -> Box<dyn Object> {
     let mut result: Box<dyn Object> = Box::new(Null);
     for s in *block.statements {
-        result = eval(Node::Statement(s));
+        result = eval(Node::Statement(s), env.clone());
 
         if result.kind() == ObjectType::Return || result.kind() == ObjectType::Error {
             return result;
@@ -165,20 +167,22 @@ fn eval_block_statement(block: BlockStatement) -> Box<dyn Object> {
     result
 }
 
-fn eval_program(statements: Vec<Statement>) -> Box<dyn Object> {
+fn eval_program(statements: Vec<Statement>, env: SharedEnvironment) -> Box<dyn Object> {
     let mut result: Box<dyn Object> = Box::new(Null);
     for s in statements {
-        result = eval(Node::Statement(s));
+        result = eval(Node::Statement(s), env.clone());
 
         match result.kind() {
-            ObjectType::Return => return match result.get_value() {
-                ObjectValue::Int(i) => Box::new(Integer { value: i }),
-                ObjectValue::Bool(b) => Box::new(Boolean { value: b }),
-                ObjectValue::Null => Box::new(Null),
-                _ => panic!("unexpected expression in return statement"),
-            },
+            ObjectType::Return => {
+                return match result.get_value() {
+                    ObjectValue::Int(i) => Box::new(Integer { value: i }),
+                    ObjectValue::Bool(b) => Box::new(Boolean { value: b }),
+                    ObjectValue::Null => Box::new(Null),
+                    _ => panic!("unexpected expression in return statement"),
+                };
+            }
             ObjectType::Error => return result,
-            _ => continue
+            _ => continue,
         }
     }
 
@@ -189,22 +193,31 @@ fn is_error(obj: &Box<dyn Object>) -> bool {
     obj.kind() == ObjectType::Error
 }
 
-pub fn eval(node: Node) -> Box<dyn Object> {
+pub fn eval(node: Node, env: SharedEnvironment) -> Box<dyn Object> {
     match node {
-        Node::Program(program) => eval_program(program.statements),
+        Node::Program(program) => eval_program(program.statements, env),
 
         Node::Statement(statement) => match statement {
             Statement::Expression(expression_statement) => {
-                eval(Node::Expression(*expression_statement.expression))
+                eval(Node::Expression(*expression_statement.expression), env)
             }
 
-            Statement::Let(let_statement) => todo!(),
+            Statement::Let(let_statement) => {
+                let value = eval(Node::Expression(*let_statement.value), env.clone());
+                if is_error(&value) {
+                    return value;
+                }
+
+                env.clone().borrow_mut().set(let_statement.id.value, value);
+
+                Box::new(Null)
+            }
 
             Statement::Return(return_statement) => {
                 let mut value: Box<dyn Object> = Box::new(Null);
 
                 if return_statement.value.is_some() {
-                    value = eval(Node::Expression(*return_statement.value.unwrap()));
+                    value = eval(Node::Expression(*return_statement.value.unwrap()), env);
                 }
                 if is_error(&value) {
                     return value;
@@ -212,11 +225,11 @@ pub fn eval(node: Node) -> Box<dyn Object> {
                 return Box::new(Return { value });
             }
 
-            Statement::Block(block_statement) => eval_block_statement(block_statement),
+            Statement::Block(block_statement) => eval_block_statement(block_statement, env),
         },
 
         Node::Expression(expression) => match expression {
-            Expression::Identifier(identifier_expression) => todo!(),
+            Expression::Identifier(identifier_expression) => eval_identifier(identifier_expression, env),
 
             Expression::Bool(boolean_expression) => Box::new(Boolean {
                 // todo: figure out how to return the same shared reference,
@@ -229,7 +242,7 @@ pub fn eval(node: Node) -> Box<dyn Object> {
             }),
 
             Expression::Prefix(prefix_expression) => {
-                let right = eval(Node::Expression(*prefix_expression.right));
+                let right = eval(Node::Expression(*prefix_expression.right), env);
 
                 if is_error(&right) {
                     return right;
@@ -239,19 +252,19 @@ pub fn eval(node: Node) -> Box<dyn Object> {
             }
 
             Expression::Infix(infix_expression) => {
-                let left = eval(Node::Expression(*infix_expression.left));
+                let left = eval(Node::Expression(*infix_expression.left), env.clone());
                 if is_error(&left) {
                     return left;
                 }
 
-                let right = eval(Node::Expression(*infix_expression.right));
+                let right = eval(Node::Expression(*infix_expression.right), env);
                 if is_error(&right) {
                     return right;
                 }
                 return eval_infix_expression(&infix_expression.operator, left, right);
             }
 
-            Expression::If(if_expression) => eval_if_expression(if_expression),
+            Expression::If(if_expression) => eval_if_expression(if_expression, env),
 
             Expression::Function(function_literal) => todo!(),
 
