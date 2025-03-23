@@ -1,5 +1,7 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
+// use crate::{ast::ASTNode, object::ObjectType};
+
 use super::Object;
 
 pub type SharedEnvironment = Rc<RefCell<Environment>>;
@@ -47,4 +49,20 @@ impl Environment {
     pub fn size(&self) -> usize {
         self.store.borrow().len()
     }
+
+    // TODO: fix this broken function, figure out how to print the inner and outer envs
+    // pub fn print_environment(&self) {
+    //     let store = self.store.borrow();
+    //     for (key, value) in store.iter() {
+    //         println!("{}: {:?}", key, value.kind());
+    //         if value.kind() == ObjectType::Function {
+    //             let f = value.get_fn_object().unwrap();
+    //             println!("fn: {}", f.body.to_string());
+    //             let outer = f.env.as_ref().borrow().outer.as_ref().unwrap().clone();
+    //             for (k, v) in outer.borrow().store.borrow().iter() {
+    //                 println!("inner {}: {:?}", k, v.kind());
+    //             }
+    //         }
+    //     }
+    // }
 }

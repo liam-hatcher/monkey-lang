@@ -10,6 +10,8 @@ pub enum ObjectType {
     Return,
     Error,
     Null,
+    Str,
+    NativeFunction,
 }
 
 #[derive(Debug, PartialEq)]
@@ -20,6 +22,8 @@ pub enum ObjectValue {
     Error(String),
     Function,
     Null,
+    Str(String),
+    Native(NativeFn)
 }
 
 pub trait CloneBox {
@@ -52,6 +56,58 @@ pub trait Object: CloneBox {
     }
 }
 
+type NativeFn = fn(Vec<Box<dyn Object>>) -> Box<dyn Object>;
+
+pub struct NativeFunction {
+    pub func: NativeFn,
+}
+
+impl Object for NativeFunction {
+    fn inspect(&self) -> String {
+        "native function".into()
+    }
+    fn kind(&self) -> ObjectType {
+        ObjectType::NativeFunction
+    }
+    fn get_value(&self) -> ObjectValue {
+        ObjectValue::Native(self.func)
+    }
+}
+
+impl CloneBox for NativeFunction {
+    fn clone_box(&self) -> Box<dyn Object> {
+        Box::new(Self {
+            func: self.func.clone()
+        })
+    }
+}
+
+pub struct Str {
+    pub value: String,
+}
+
+impl Object for Str {
+    fn inspect(&self) -> String {
+        self.value.clone()
+    }
+
+    fn kind(&self) -> ObjectType {
+        ObjectType::Str
+    }
+
+    fn get_value(&self) -> ObjectValue {
+        ObjectValue::Str(self.value.clone())
+    }
+}
+
+impl CloneBox for Str {
+    fn clone_box(&self) -> Box<dyn Object> {
+        Box::new(Self {
+            value: self.value.clone(),
+        })
+    }
+}
+
 pub struct Function {
     pub parameters: Vec<IdentifierExpression>,
     pub body: Box<BlockStatement>,
@@ -67,7 +123,7 @@ impl Object for Function {
             .collect::<Vec<String>>()
             .join(", ");
 
-        format!("fn({}) {{\n{}\n}}",  params, &*self.body.to_string())
+        format!("fn({}) {{\n{}\n}}", params, &*self.body.to_string())
     }
 
     fn kind(&self) -> ObjectType {
@@ -78,7 +134,7 @@ impl Object for Function {
         Some(Function {
             parameters: self.parameters.clone(),
             body: self.body.clone(),
-            env: self.env.clone()
+            env: self.env.clone(),
         })
     }
 }
@@ -88,7 +144,7 @@ impl CloneBox for Function {
         Box::new(Self {
             parameters: self.parameters.clone(),
             body: self.body.clone(),
-            env: self.env.clone()
+            env: self.env.clone(),
         })
     }
 }
@@ -140,7 +196,7 @@ impl Object for Return {
         }
     }
     fn get_return_value(&self) -> Option<Box<dyn Object>> {
-         Some(self.value.clone_box())
+        Some(self.value.clone_box())
     }
 }
 

@@ -27,6 +27,9 @@ pub enum TokenType {
     Return,
     Equal,
     NotEqual,
+    Str,
+    LBracket,
+    RBracket
 }
 
 #[derive(Debug, Clone)]

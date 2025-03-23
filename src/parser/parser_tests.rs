@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Expression, InfixExpression, Node, Program, Statement},
+    ast::{ASTNode, Expression, InfixExpression, Node, Program, Statement},
     lexer::Lexer,
     parser::Parser,
 };
@@ -11,7 +11,7 @@ fn get_program(input: &str) -> Program {
 
     match program {
         Node::Program(p) => p,
-        _ => panic!("failed to parse program")
+        _ => panic!("failed to parse program"),
     }
 }
 
@@ -210,26 +210,35 @@ fn test_prefix_expressions() {
 
     for (input, operator, value) in test_cases {
         let program = get_program(input);
-        assert_eq!(program.statements.len(), 1, "Expected exactly one statement");
+        assert_eq!(
+            program.statements.len(),
+            1,
+            "Expected exactly one statement"
+        );
 
         let statement = match &program.statements[0] {
             Statement::Expression(es) => es,
             _ => panic!("Expected an ExpressionStatement"),
         };
 
-        assert_eq!(statement.token.literal, operator, "Unexpected token literal");
+        assert_eq!(
+            statement.token.literal, operator,
+            "Unexpected token literal"
+        );
 
         let prefix_expression = match &*statement.expression {
             Expression::Prefix(pe) => pe,
             _ => panic!("Expected a PrefixExpression"),
         };
 
-        assert_eq!(prefix_expression.operator, operator, "Unexpected prefix operator");
+        assert_eq!(
+            prefix_expression.operator, operator,
+            "Unexpected prefix operator"
+        );
 
         test_literal_expression(&prefix_expression.right, value);
     }
 }
-
 
 fn test_infix_expression(
     expression: &InfixExpression,
@@ -536,5 +545,52 @@ fn test_call_espression_parsing() {
         }
     } else {
         panic!("Invalid ExpressionStatement")
+    }
+}
+
+#[test]
+fn test_string_literal_expression() {
+    let input = "\"hello world\"";
+
+    let program = get_program(input);
+
+    if let Statement::Expression(expr) = &program.statements[0] {
+        if let Expression::String(s) = &*expr.expression {
+            assert_eq!("hello world", s.to_string(), "string value mismatch");
+        } else {
+            panic!("Invalid StringLiteral");
+        }
+    } else {
+        panic!("Invalid ExpressionStatement");
+    }
+}
+
+#[test]
+fn test_parsing_array_literals() {
+    let input = "[1, 2 * 2, 3 + 3]";
+
+    let program = get_program(input);
+
+    if let Statement::Expression(expr) = &program.statements[0] {
+        if let Expression::Array(arr) = &*expr.expression {
+            assert_eq!(arr.elements.len(), 3, "array should have 3 elements");
+            test_integer_literal(&arr.elements[0], 1);
+
+            if let Expression::Infix(ie) = &*arr.elements[1] {
+                test_infix_expression(ie, TestValue::Int(2), &"*".to_string(), TestValue::Int(2));
+            } else {
+                panic!("Invalid infix expression in array")
+            }
+
+            if let Expression::Infix(ie) = &*arr.elements[2] {
+                test_infix_expression(ie, TestValue::Int(3), &"+".to_string(), TestValue::Int(3));
+            } else {
+                panic!("Invalid infix expression in array")
+            }
+        } else {
+            panic!("Invalid ArrayLiteral")
+        }
+    } else {
+        panic!("Invalid ExpressionStatement");
     }
 }

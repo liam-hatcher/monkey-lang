@@ -5,6 +5,37 @@ pub trait ASTNode {
 }
 
 #[derive(Debug, Clone)]
+pub struct StringLiteral {
+    pub token: Token,
+    pub value: String,
+}
+
+impl ASTNode for StringLiteral {
+    fn to_string(&self) -> String {
+        self.token.literal.clone()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ArrayLiteral {
+    pub token: Token,
+    pub elements: Vec<Box<Expression>>,
+}
+
+impl ASTNode for ArrayLiteral {
+    fn to_string(&self) -> String {
+        let elements = self
+            .elements
+            .iter()
+            .map(|el| el.to_string())
+            .collect::<Vec<String>>()
+            .join(", ");
+
+        format!("[{}]", elements)
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct IdentifierExpression {
     pub token: Token,
     pub value: String,
@@ -191,6 +222,8 @@ pub enum Expression {
     If(IfExpression),
     Function(FunctionLiteral),
     Call(CallExpression),
+    String(StringLiteral),
+    Array(ArrayLiteral)
 }
 
 impl ASTNode for Expression {
@@ -206,6 +239,8 @@ impl ASTNode for Expression {
             If(ie) => ie.to_string(),
             Function(f) => f.to_string(),
             Call(c) => c.to_string(),
+            String(s) => s.to_string(),
+            Array(a) => a.to_string(),
         }
     }
 }
@@ -279,5 +314,5 @@ impl Program {
 pub enum Node {
     Program(Program),
     Statement(Statement),
-    Expression(Expression)
+    Expression(Expression),
 }

@@ -1,5 +1,3 @@
-use std::{cell::RefCell, rc::Rc};
-
 use crate::{
     ast::ASTNode,
     lexer::Lexer,
@@ -206,6 +204,7 @@ if (10 > 1) {
             "unknown operator: Boolean + Boolean",
         ),
         ("foobar", "identifier not found: foobar"),
+        (r#""Hello" - "World""#, "unknown operator: Str - Str"),
     ];
 
     for (input, expected) in tests {
@@ -282,5 +281,110 @@ fn test_function_application() {
     for (input, expected) in tests {
         let evaluated = test_eval(input);
         test_integer_object(&evaluated, evaluated.get_value(), expected);
+    }
+}
+
+#[test]
+fn test_closures() {
+    let input = r#"
+    let newAdder = fn(x) {
+       fn(y) { x + y };
+    };
+    let addTwo = newAdder(2);
+    addTwo(2);
+    "#;
+
+    let evaluated = test_eval(input);
+    test_integer_object(&evaluated, evaluated.get_value(), 4);
+}
+
+#[test]
+fn test_string_literal() {
+    let input = "\"Hello world!\"";
+
+    let evaluated = test_eval(input);
+
+    assert_eq!(
+        evaluated.kind(),
+        ObjectType::Str,
+        "should be a string object"
+    );
+
+    assert_eq!(
+        evaluated.get_value(),
+        ObjectValue::Str("Hello world!".into()),
+        "string values match"
+    );
+}
+
+#[test]
+fn test_string_concatenation() {
+    let input = r#""Hello" + " " + "World!""#;
+
+    let evaluated = test_eval(input);
+
+    assert_eq!(evaluated.kind(), ObjectType::Str, "should be string object");
+
+    assert_eq!(
+        evaluated.get_value(),
+        ObjectValue::Str("Hello World!".into()),
+        "string values match"
+    );
+}
+
+#[test]
+fn test_native_functions() {
+    enum Expected {
+        Int(i64),
+        ErrorMessage(String),
+    }
+
+    struct TestCase<'a> {
+        input: &'a str,
+        expected: Expected,
+    }
+
+    let tests = [
+        TestCase {
+            input: "len(\"\")",
+            expected: Expected::Int(0),
+        },
+        TestCase {
+            input: "len(\"four\")",
+            expected: Expected::Int(4),
+        },
+        TestCase {
+            input: "len(\"hello world\")",
+            expected: Expected::Int(11),
+        },
+        TestCase {
+            input: "len(1)",
+            expected: Expected::ErrorMessage(
+                "argument to 'len' not supported, got Integer".to_string(),
+            ),
+        },
+        TestCase {
+            input: "len(\"one\", \"two\")",
+            expected: Expected::ErrorMessage(
+                "len expects 1 argument, but 2 were supplied".to_string(),
+            ),
+        },
+    ];
+
+    for test in tests {
+        let evaluated = test_eval(test.input);
+
+        match test.expected {
+            Expected::Int(expected) => {
+                test_integer_object(&evaluated, evaluated.get_value(), expected)
+            }
+            Expected::ErrorMessage(error) => {
+                assert!(evaluated.kind() == ObjectType::Error, "object is an error");
+
+               if let ObjectValue::Error(e) = evaluated.get_value() {
+                   assert_eq!(error, e, "Error message is correct");
+               };
+            },
+        }
     }
 }

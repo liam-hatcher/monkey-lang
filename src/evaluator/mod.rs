@@ -1,8 +1,10 @@
-use std::{cell::RefCell, rc::Rc};
+use native_functions::get_native_function;
 
 use crate::{
     ast::{BlockStatement, Expression, IdentifierExpression, IfExpression, Node, Statement},
-    object::{Boolean, Error, Function, Integer, Null, Object, ObjectType, ObjectValue, Return},
+    object::{
+        Boolean, Error, Function, Integer, Null, Object, ObjectType, ObjectValue, Return, Str,
+    },
 };
 
 use crate::object::environment::*;
@@ -60,6 +62,7 @@ fn eval_integer_infix_expression(
         ">" => Box::new(Boolean { value: l > r }),
         "==" => Box::new(Boolean { value: l == r }),
         "!=" => Box::new(Boolean { value: l != r }),
+        // "<=" => Box::new(Boolean { value: l <= r }),
         _ => Box::new(Error {
             message: format!(
                 "unknown operator: {:?} {} {:?}",
@@ -71,6 +74,30 @@ fn eval_integer_infix_expression(
     }
 }
 
+fn eval_string_infix_expression(
+    operator: &str,
+    left: Box<dyn Object>,
+    right: Box<dyn Object>,
+) -> Box<dyn Object> {
+    if operator != "+" {
+        return Box::new(Error {
+            message: format!(
+                "unknown operator: {:?} {} {:?}",
+                left.kind(),
+                operator,
+                right.kind()
+            ),
+        });
+    }
+
+    let left = left.inspect();
+    let right = right.inspect();
+
+    Box::new(Str {
+        value: left + &*right,
+    })
+}
+
 fn eval_infix_expression(
     operator: &str,
     left: Box<dyn Object>,
@@ -78,6 +105,10 @@ fn eval_infix_expression(
 ) -> Box<dyn Object> {
     if left.kind() == ObjectType::Integer && right.kind() == ObjectType::Integer {
         return eval_integer_infix_expression(operator, left, right);
+    }
+
+    if left.kind() == ObjectType::Str && right.kind() == ObjectType::Str {
+        return eval_string_infix_expression(operator, left, right);
     }
 
     if operator == "==" {
@@ -120,15 +151,15 @@ fn eval_bang_operator(right: Box<dyn Object>) -> Box<dyn Object> {
 }
 
 fn eval_identifier(id: IdentifierExpression, env: SharedEnvironment) -> Box<dyn Object> {
-    let value = env.borrow().get(&id.value);
-
-    if value.is_none() {
-        return Box::new(Error {
-            message: format!("identifier not found: {}", id.value),
-        });
+    if let Some(value) = env.borrow().get(&id.value) {
+        return value;
+    } else if let Some(native) = get_native_function(&id.value) {
+        return native;
     }
 
-    return value.unwrap();
+    Box::new(Error {
+        message: format!("identifier not found: {}", id.value),
+    })
 }
 
 fn eval_minus_prefix_operator_expression(right: Box<dyn Object>) -> Box<dyn Object> {
@@ -187,7 +218,8 @@ fn extend_function_env(function: Box<dyn Object>, args: Vec<Box<dyn Object>>) ->
     let env = Environment::new_enclosed(func.env);
 
     for (idx, param) in func.parameters.iter().enumerate() {
-        env.borrow_mut().set(param.value.clone(), args[idx].clone_box());
+        env.borrow_mut()
+            .set(param.value.clone(), args[idx].clone_box());
     }
 
     env
@@ -202,16 +234,25 @@ fn unwrap_return_value(object: Box<dyn Object>) -> Box<dyn Object> {
 }
 
 fn apply_function(func: Box<dyn Object>, args: Vec<Box<dyn Object>>) -> Box<dyn Object> {
+    if func.kind() == ObjectType::NativeFunction {
+        if let ObjectValue::Native(f) = func.get_value() {
+            return f(args);
+        }
+    }
+
     let function = func.get_fn_object();
     if function.is_none() {
         // can this ever actually happen?
         return Box::new(Error {
-            message: format!("not a function: {:?}", func.kind())
-        })
+            message: format!("not a function: {:?}", func.kind()),
+        });
     }
 
     let extended_env = extend_function_env(func, args);
-    let evaluated = eval(Node::Statement(Statement::Block(*function.unwrap().body)), extended_env);
+    let evaluated = eval(
+        Node::Statement(Statement::Block(*function.unwrap().body)),
+        extended_env,
+    );
 
     unwrap_return_value(evaluated)
 }
@@ -314,7 +355,6 @@ pub fn eval(node: Node, env: SharedEnvironment) -> Box<dyn Object> {
                 }
                 return eval_infix_expression(&infix_expression.operator, left, right);
             }
-
             Expression::If(if_expression) => eval_if_expression(if_expression, env),
 
             Expression::Function(function_literal) => Box::new(Function {
@@ -335,9 +375,17 @@ pub fn eval(node: Node, env: SharedEnvironment) -> Box<dyn Object> {
 
                 return apply_function(function, args);
             }
+
+            Expression::String(string_literal) => Box::new(Str {
+                value: string_literal.value.clone(),
+            }),
+
+            Expression::Array(array_literal) => todo!(),
         },
     }
 }
+
+mod native_functions;
 
 #[cfg(test)]
 mod evaluator_tests;

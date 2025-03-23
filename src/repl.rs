@@ -1,8 +1,4 @@
-use std::{
-    cell::RefCell,
-    io::{self, Write},
-    rc::Rc,
-};
+use std::io::{self, Write};
 
 use crate::{evaluator::eval, lexer::Lexer, object::environment::Environment, parser::Parser};
 
@@ -22,8 +18,10 @@ const MONKEY_FACE: &str = r#"
 
 pub fn start_repl() {
     let environment = Environment::new();
+    print!("{MONKEY_FACE}");
+    println!("Welcome to the Monkey Programming Language, enter some commands: \n");
     loop {
-        print!("monkey >>");
+        print!("monkey >>  ");
 
         io::stdout().flush().unwrap();
 
@@ -45,10 +43,14 @@ pub fn start_repl() {
             }
             continue;
         }
-        
+
         let evaluated = eval(program, environment.clone());
         let output = evaluated.inspect();
-        
-        println!("{}", output);
+
+        // environment.borrow().print_environment();
+
+        if output != "null" {
+            println!("{}", output);
+        }
     }
 }

@@ -62,7 +62,19 @@ impl Lexer {
         self.skip_whitespace();
     }
 
-    
+    fn read_string(&mut self) -> &str {
+        let position = (self.position.clone() + 1) as usize;
+
+        loop {
+            self.read_char();
+
+            if self.ch == '"' || self.ch == '\0' {
+                break;
+            }
+        }
+
+        return &self.input[position..self.position as usize];
+    }
 
     pub fn next_token(&mut self) -> Token {
         use TokenType::*;
@@ -77,7 +89,7 @@ impl Lexer {
                     return Token::new(Equal, String::from("=="));
                 }
                 Token::new(Assign, self.ch.into())
-            },
+            }
             '+' => Token::new(Plus, self.ch.into()),
             '-' => Token::new(Minus, self.ch.into()),
             '!' => {
@@ -87,7 +99,7 @@ impl Lexer {
                     return Token::new(NotEqual, String::from("!="));
                 }
                 Token::new(Bang, self.ch.into())
-            },
+            }
             '*' => Token::new(Asterisk, self.ch.into()),
             '/' => Token::new(Slash, self.ch.into()),
             '<' => Token::new(LT, self.ch.into()),
@@ -96,8 +108,11 @@ impl Lexer {
             ')' => Token::new(RParen, self.ch.into()),
             '{' => Token::new(LBrace, self.ch.into()),
             '}' => Token::new(RBrace, self.ch.into()),
+            '[' => Token::new(LBracket, self.ch.into()),
+            ']' => Token::new(RBracket, self.ch.into()),
             ',' => Token::new(Comma, self.ch.into()),
             ';' => Token::new(Semicolon, self.ch.into()),
+            '"' => Token::new(Str, self.read_string().into()),
             '\0' => {
                 if self.position == 0 {
                     // If the we are at the beggining of the input,
@@ -115,7 +130,7 @@ impl Lexer {
                 } else if self.ch.is_digit(10) {
                     return Token::new(Int, self.read_number().into());
                 }
-                return Token::new(Illegal, self.ch.into());
+                panic!("Failed to lex illegal character: {}", self.ch);
             }
         };
 

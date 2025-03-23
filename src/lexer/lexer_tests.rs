@@ -24,6 +24,9 @@ fn test_next_token() {
 
             10 == 10;
             10 != 9;
+            "foobar"
+            "foo bar"
+            [1,2];
         "#;
 
     let mut l = Lexer::new(input.into());
@@ -101,6 +104,14 @@ fn test_next_token() {
         (TokenType::Int, "10"),
         (TokenType::NotEqual, "!="),
         (TokenType::Int, "9"),
+        (TokenType::Semicolon, ";"),
+        (TokenType::Str, "foobar"),
+        (TokenType::Str, "foo bar"),
+        (TokenType::LBracket, "["),
+        (TokenType::Int, "1"),
+        (TokenType::Comma, ","),
+        (TokenType::Int, "2"),
+        (TokenType::RBracket, "]"),
         (TokenType::Semicolon, ";"),
         (TokenType::EOF, ""),
     ];

@@ -1,4 +1,3 @@
-use core::fmt;
 use std::{cell::RefCell, collections::HashMap};
 
 use crate::{
@@ -39,25 +38,6 @@ pub struct Parser<'a> {
     pub errors: Vec<String>,
 }
 
-#[derive(Debug)]
-enum ParserError {
-    UnknownError,
-    UnexpectedToken(String),
-    ParseExpressionFail,
-}
-
-impl fmt::Display for ParserError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ParserError::UnexpectedToken(token) => {
-                write!(f, "Unexpected token encountered: {}", token)
-            }
-            ParserError::ParseExpressionFail => write!(f, "Failed to parse expression"),
-            ParserError::UnknownError => write!(f, "Unknown error occurred"),
-        }
-    }
-}
-
 impl<'a> Parser<'a> {
     pub fn new(lexer: &'a mut Lexer) -> Self {
         use TokenType::*;
@@ -87,6 +67,8 @@ impl<'a> Parser<'a> {
             Function,
             ParseFn::PrefixOptional(|p| p.parse_function_literal()),
         );
+        parser.register_prefix(Str, ParseFn::Prefix(|p| p.parse_string_literal()));
+        parser.register_prefix(LBracket, ParseFn::Prefix(|p| p.parse_array_literal()));
 
         parser.register_infix(Plus, |p, ex| p.parse_infix_expression(ex));
         parser.register_infix(Minus, |p, ex| p.parse_infix_expression(ex));
@@ -165,6 +147,49 @@ impl<'a> Parser<'a> {
             expected_kind, self.peek_token.kind
         ));
         false
+    }
+
+    fn parse_expression_list(&mut self, end: TokenType) -> Vec<Box<Expression>> {
+        let mut list: Vec<Box<Expression>> = vec![];
+
+        if self.peek_token.kind == end {
+            self.next_token();
+            return list;
+        }
+
+        self.next_token();
+        list.push(Box::new(
+            self.parse_expression(OperatorPrecedence::Lowest).unwrap(),
+        ));
+
+        while self.peek_token.kind == TokenType::Comma {
+            self.next_token();
+            self.next_token();
+
+            list.push(Box::new(
+                self.parse_expression(OperatorPrecedence::Lowest).unwrap(),
+            ));
+        }
+
+        if !self.expect_peek(end) {
+            return vec![];
+        }
+
+        list
+    }
+
+    fn parse_array_literal(&mut self) -> Box<Expression> {
+        Box::new(Expression::Array(ArrayLiteral {
+            token: self.current_token.clone(),
+            elements: self.parse_expression_list(TokenType::RBracket),
+        }))
+    }
+
+    fn parse_string_literal(&mut self) -> Box<Expression> {
+        Box::new(Expression::String(StringLiteral {
+            token: self.current_token.clone(),
+            value: self.current_token.literal.clone(),
+        }))
     }
 
     fn parse_let_statement(&mut self) -> Option<Statement> {
@@ -248,15 +273,15 @@ impl<'a> Parser<'a> {
         let value = literal.parse::<i64>();
 
         match value {
-            Ok(int_literal) => {
-                Some(Box::new(Expression::Integer(IntegerLiteral {
-                    token: self.current_token.clone(),
-                    value: int_literal,
-                })))
-            }
+            Ok(int_literal) => Some(Box::new(Expression::Integer(IntegerLiteral {
+                token: self.current_token.clone(),
+                value: int_literal,
+            }))),
             Err(e) => {
-                self.errors
-                    .push(format!("could not parse {:?} as integer \n\t {}", literal, e));
+                self.errors.push(format!(
+                    "could not parse {:?} as integer \n\t {}",
+                    literal, e
+                ));
                 None
             }
         }
@@ -425,41 +450,11 @@ impl<'a> Parser<'a> {
         Box::new(Expression::Infix(expression))
     }
 
-    fn parse_call_arguments(&mut self) -> Option<Vec<Box<Expression>>> {
-        let mut arguments: Vec<Box<Expression>> = vec![];
-
-        if self.peek_token.kind == TokenType::RParen {
-            self.next_token();
-            return Some(arguments);
-        }
-
-        self.next_token();
-
-        arguments.push(Box::new(
-            self.parse_expression(OperatorPrecedence::Lowest).unwrap(),
-        ));
-
-        while self.peek_token.kind == TokenType::Comma {
-            self.next_token();
-            self.next_token();
-
-            arguments.push(Box::new(
-                self.parse_expression(OperatorPrecedence::Lowest).unwrap(),
-            ));
-        }
-
-        if !self.expect_peek(TokenType::RParen) {
-            return None;
-        }
-
-        Some(arguments)
-    }
-
     fn parse_call_expression(&mut self, function: Box<Expression>) -> Box<Expression> {
         let expression = CallExpression {
             token: self.current_token.clone(),
             function,
-            arguments: self.parse_call_arguments().unwrap(),
+            arguments: self.parse_expression_list(TokenType::RParen),
         };
 
         Box::new(Expression::Call(expression))
