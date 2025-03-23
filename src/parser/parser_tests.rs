@@ -383,6 +383,14 @@ fn test_operator_precedence() {
             "add(a + b + c * d / f + g)",
             "add((((a + b) + ((c * d) / f)) + g))",
         ),
+        (
+            "a * [1, 2, 3, 4][b * c] * d",
+            "((a * ([1, 2, 3, 4][(b * c)])) * d)",
+        ),
+        (
+            "add(a * b[2], b[1], 2 * [1, 2][1])",
+            "add((a * (b[2])), (b[1]), (2 * ([1, 2][1])))",
+        ),
     ];
 
     for (input, output) in test_cases {
@@ -589,6 +597,29 @@ fn test_parsing_array_literals() {
             }
         } else {
             panic!("Invalid ArrayLiteral")
+        }
+    } else {
+        panic!("Invalid ExpressionStatement");
+    }
+}
+
+#[test]
+fn test_parsing_index_expressions() {
+    let input = "myArray[1 + 1];";
+
+    let program = get_program(input);
+
+    if let Statement::Expression(expr) = &program.statements[0] {
+        if let Expression::Index(idx_expr) = &*expr.expression {
+            test_identifier(&idx_expr.left, "myArray".into());
+
+            if let Expression::Infix(ie) = &*idx_expr.index {
+                test_infix_expression(ie, TestValue::Int(1), &"+".to_string(), TestValue::Int(1));
+            } else {
+                panic!("Invalid infix expression in IndexExpression")
+            }
+        } else {
+            panic!("Invalid IndexExpression");
         }
     } else {
         panic!("Invalid ExpressionStatement");

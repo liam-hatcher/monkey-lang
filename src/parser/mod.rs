@@ -15,25 +15,32 @@ pub enum OperatorPrecedence {
     Product,     // *
     Prefix,      // -X or !X
     Call,        // myFunction(X)
+    Index        // myArray[1 + 1]
 }
 
 type PrefixParseFn = fn(&mut Parser) -> Box<Expression>;
 type PrefixOptionalParseFn = fn(&mut Parser) -> Option<Box<Expression>>;
 
 // This feels really clumsy.
-enum ParseFn {
+enum PrefixParser {
     Prefix(PrefixParseFn),
     PrefixOptional(PrefixOptionalParseFn),
 }
 type InfixParseFn = fn(&mut Parser, Box<Expression>) -> Box<Expression>;
+type InfixOptionalParseFn = fn(&mut Parser, Box<Expression>) -> Option<Box<Expression>>;
+#[derive(Clone)]
+enum InfixParser {
+    Infix(InfixParseFn),
+    InfixOptional(InfixOptionalParseFn),
+}
 
 pub struct Parser<'a> {
     lexer: &'a mut Lexer,
     current_token: Token,
     peek_token: Token,
-    prefix_parse_fns: HashMap<TokenType, ParseFn>,
+    prefix_parse_fns: HashMap<TokenType, PrefixParser>,
     // This seems like a hack, but i'm a n00b so ¯\_(ツ)_/¯
-    infix_parse_fns: RefCell<HashMap<TokenType, InfixParseFn>>,
+    infix_parse_fns: RefCell<HashMap<TokenType, InfixParser>>,
 
     pub errors: Vec<String>,
 }
@@ -52,33 +59,64 @@ impl<'a> Parser<'a> {
             errors: vec![],
         };
 
-        parser.register_prefix(Identifier, ParseFn::Prefix(|p| p.parse_identifier()));
-        parser.register_prefix(Int, ParseFn::PrefixOptional(|p| p.parse_integer_literal()));
-        parser.register_prefix(Bang, ParseFn::Prefix(|p| p.parse_prefix_expression()));
-        parser.register_prefix(Minus, ParseFn::Prefix(|p| p.parse_prefix_expression()));
-        parser.register_prefix(True, ParseFn::Prefix(|p| p.parse_boolean()));
-        parser.register_prefix(False, ParseFn::Prefix(|p| p.parse_boolean()));
+        parser.register_prefix(Identifier, PrefixParser::Prefix(|p| p.parse_identifier()));
+        parser.register_prefix(
+            Int,
+            PrefixParser::PrefixOptional(|p| p.parse_integer_literal()),
+        );
+        parser.register_prefix(Bang, PrefixParser::Prefix(|p| p.parse_prefix_expression()));
+        parser.register_prefix(Minus, PrefixParser::Prefix(|p| p.parse_prefix_expression()));
+        parser.register_prefix(True, PrefixParser::Prefix(|p| p.parse_boolean()));
+        parser.register_prefix(False, PrefixParser::Prefix(|p| p.parse_boolean()));
         parser.register_prefix(
             LParen,
-            ParseFn::PrefixOptional(|p| p.parse_grouped_expression()),
+            PrefixParser::PrefixOptional(|p| p.parse_grouped_expression()),
         );
-        parser.register_prefix(If, ParseFn::PrefixOptional(|p| p.parse_if_expression()));
+        parser.register_prefix(
+            If,
+            PrefixParser::PrefixOptional(|p| p.parse_if_expression()),
+        );
         parser.register_prefix(
             Function,
-            ParseFn::PrefixOptional(|p| p.parse_function_literal()),
+            PrefixParser::PrefixOptional(|p| p.parse_function_literal()),
         );
-        parser.register_prefix(Str, ParseFn::Prefix(|p| p.parse_string_literal()));
-        parser.register_prefix(LBracket, ParseFn::Prefix(|p| p.parse_array_literal()));
+        parser.register_prefix(Str, PrefixParser::Prefix(|p| p.parse_string_literal()));
+        parser.register_prefix(LBracket, PrefixParser::Prefix(|p| p.parse_array_literal()));
 
-        parser.register_infix(Plus, |p, ex| p.parse_infix_expression(ex));
-        parser.register_infix(Minus, |p, ex| p.parse_infix_expression(ex));
-        parser.register_infix(Slash, |p, ex| p.parse_infix_expression(ex));
-        parser.register_infix(Asterisk, |p, ex| p.parse_infix_expression(ex));
-        parser.register_infix(Equal, |p, ex| p.parse_infix_expression(ex));
-        parser.register_infix(NotEqual, |p, ex| p.parse_infix_expression(ex));
-        parser.register_infix(LT, |p, ex| p.parse_infix_expression(ex));
-        parser.register_infix(GT, |p, ex| p.parse_infix_expression(ex));
-        parser.register_infix(LParen, |p, ex| p.parse_call_expression(ex));
+        parser.register_infix(
+            Plus,
+            InfixParser::Infix(|p, ex| p.parse_infix_expression(ex)),
+        );
+        parser.register_infix(
+            Minus,
+            InfixParser::Infix(|p, ex| p.parse_infix_expression(ex)),
+        );
+        parser.register_infix(
+            Slash,
+            InfixParser::Infix(|p, ex| p.parse_infix_expression(ex)),
+        );
+        parser.register_infix(
+            Asterisk,
+            InfixParser::Infix(|p, ex| p.parse_infix_expression(ex)),
+        );
+        parser.register_infix(
+            Equal,
+            InfixParser::Infix(|p, ex| p.parse_infix_expression(ex)),
+        );
+        parser.register_infix(
+            NotEqual,
+            InfixParser::Infix(|p, ex| p.parse_infix_expression(ex)),
+        );
+        parser.register_infix(LT, InfixParser::Infix(|p, ex| p.parse_infix_expression(ex)));
+        parser.register_infix(GT, InfixParser::Infix(|p, ex| p.parse_infix_expression(ex)));
+        parser.register_infix(
+            LParen,
+            InfixParser::Infix(|p, ex| p.parse_call_expression(ex)),
+        );
+        parser.register_infix(
+            LBracket,
+            InfixParser::InfixOptional(|p, ex| p.parse_index_expression(ex)),
+        );
 
         // eat two tokens so the current_token and peek_token get set correctly
         parser.next_token();
@@ -87,11 +125,11 @@ impl<'a> Parser<'a> {
         parser
     }
 
-    fn register_prefix(&mut self, token_type: TokenType, func: ParseFn) {
+    fn register_prefix(&mut self, token_type: TokenType, func: PrefixParser) {
         self.prefix_parse_fns.insert(token_type, func);
     }
 
-    fn register_infix(&mut self, token_type: TokenType, func: InfixParseFn) {
+    fn register_infix(&mut self, token_type: TokenType, func: InfixParser) {
         self.infix_parse_fns.borrow_mut().insert(token_type, func);
     }
 
@@ -103,6 +141,7 @@ impl<'a> Parser<'a> {
             Plus | Minus => Some(OperatorPrecedence::Sum),
             Slash | Asterisk => Some(OperatorPrecedence::Product),
             LParen => Some(OperatorPrecedence::Call),
+            LBracket => Some(OperatorPrecedence::Index),
             _ => None,
         }
     }
@@ -147,6 +186,25 @@ impl<'a> Parser<'a> {
             expected_kind, self.peek_token.kind
         ));
         false
+    }
+
+    fn parse_index_expression(&mut self, left: Box<Expression>) -> Option<Box<Expression>> {
+        let token = self.current_token.clone();
+
+        self.next_token();
+        let index = self.parse_expression(OperatorPrecedence::Lowest).unwrap();
+
+        if !self.expect_peek(TokenType::RBracket) {
+            return None;
+        }
+
+        let expression = IndexExpression {
+            token,
+            left,
+            index: Box::new(index),
+        };
+
+        Some(Box::new(Expression::Index(expression)))
     }
 
     fn parse_expression_list(&mut self, end: TokenType) -> Vec<Box<Expression>> {
@@ -472,8 +530,8 @@ impl<'a> Parser<'a> {
         }
 
         let mut left = match *prefix.unwrap() {
-            ParseFn::Prefix(p) => p(self),
-            ParseFn::PrefixOptional(p) => p(self)?,
+            PrefixParser::Prefix(p) => p(self),
+            PrefixParser::PrefixOptional(p) => p(self)?,
         };
 
         while self.peek_token.kind != TokenType::Semicolon && precedence < self.peek_precedence() {
@@ -490,7 +548,10 @@ impl<'a> Parser<'a> {
 
             if let Some(infix) = infix {
                 self.next_token();
-                left = infix(self, left);
+                left = match infix {
+                    InfixParser::Infix(infix) => infix(self, left),
+                    InfixParser::InfixOptional(infix_optional) => infix_optional(self, left)?,
+                };
             } else {
                 return Some(*left);
             }

@@ -3,7 +3,7 @@ use native_functions::get_native_function;
 use crate::{
     ast::{BlockStatement, Expression, IdentifierExpression, IfExpression, Node, Statement},
     object::{
-        Boolean, Error, Function, Integer, Null, Object, ObjectType, ObjectValue, Return, Str,
+        Array, Boolean, Error, Function, Integer, Null, Object, ObjectType, ObjectValue, Return, Str
     },
 };
 
@@ -213,6 +213,35 @@ fn eval_expressions(args: Vec<Box<Expression>>, env: SharedEnvironment) -> Vec<B
     result
 }
 
+fn eval_array_index_expression(left: Box<dyn Object>, index: Box<dyn Object>) -> Box<dyn Object> {
+    let array = left.get_value();
+    let ObjectValue::Int(idx) = index.get_value() else {
+        unreachable!();
+    };
+
+    let elements = match array {
+        ObjectValue::Array(objects) => objects,
+        _ => unreachable!()
+    };
+    let max = if elements.len() > 0 { elements.len() - 1 } else { 0 };
+
+    if idx < 0 || idx > max as i64 {
+        return Box::new(Null)
+    }
+    
+    elements[idx as usize].clone()
+}
+
+fn eval_index_expression(left: Box<dyn Object>, index: Box<dyn Object>) -> Box<dyn Object> {
+    if left.kind() == ObjectType::Array && index.kind() == ObjectType::Integer {
+        return eval_array_index_expression(left, index);
+    }
+
+    return Box::new(Error{
+        message: format!("index operator not supported: {:?}", left.kind())
+    })
+}
+
 fn extend_function_env(function: Box<dyn Object>, args: Vec<Box<dyn Object>>) -> SharedEnvironment {
     let func = function.get_fn_object().unwrap();
     let env = Environment::new_enclosed(func.env);
@@ -380,7 +409,33 @@ pub fn eval(node: Node, env: SharedEnvironment) -> Box<dyn Object> {
                 value: string_literal.value.clone(),
             }),
 
-            Expression::Array(array_literal) => todo!(),
+            Expression::Array(array_literal) => {
+                let elements = eval_expressions(array_literal.elements, env);
+
+                if elements.len() == 1 && is_error(&elements[0]) {
+                    elements[0].clone()
+                } else {
+                    Box::new(Array {
+                        elements
+                    })
+                }
+            },
+
+            Expression::Index(index_expression) => {
+                let left = eval(Node::Expression(*index_expression.left), env.clone());
+
+                if is_error(&left) {
+                    return left.clone();
+                }
+
+                let index = eval(Node::Expression(*index_expression.index), env);
+
+                if is_error(&index) {
+                    return index.clone();
+                }
+
+                eval_index_expression(left, index)
+            },
         },
     }
 }

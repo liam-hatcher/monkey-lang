@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use environment::SharedEnvironment;
 
 use crate::ast::{ASTNode, BlockStatement, IdentifierExpression};
@@ -12,6 +14,7 @@ pub enum ObjectType {
     Null,
     Str,
     NativeFunction,
+    Array,
 }
 
 #[derive(Debug, PartialEq)]
@@ -23,7 +26,8 @@ pub enum ObjectValue {
     Function,
     Null,
     Str(String),
-    Native(NativeFn)
+    Native(NativeFn),
+    Array(Vec<Box<dyn Object>>),
 }
 
 pub trait CloneBox {
@@ -36,13 +40,19 @@ impl<T: 'static + Object + Clone> CloneBox for T {
     }
 }
 
+impl PartialEq for dyn Object {
+    fn eq(&self, _other: &Self) -> bool {
+        false
+    }
+}
+
 impl Clone for Box<dyn Object> {
     fn clone(&self) -> Self {
         self.clone_box()
     }
 }
 
-pub trait Object: CloneBox {
+pub trait Object: CloneBox + Debug {
     fn inspect(&self) -> String;
     fn kind(&self) -> ObjectType;
     fn get_value(&self) -> ObjectValue {
@@ -54,10 +64,57 @@ pub trait Object: CloneBox {
     fn get_return_value(&self) -> Option<Box<dyn Object>> {
         None
     }
+    fn get_array_elements(&self) -> Option<Vec<ObjectValue>> {
+        None
+    }
+}
+
+#[derive(Debug)]
+pub struct Array {
+    pub elements: Vec<Box<dyn Object>>,
+}
+
+impl CloneBox for Array {
+    fn clone_box(&self) -> Box<dyn Object> {
+        Box::new(Self {
+            elements: self.elements.clone(),
+        })
+    }
+}
+
+impl Object for Array {
+    fn inspect(&self) -> String {
+        let elements = self
+            .elements
+            .iter()
+            .map(|e| e.inspect())
+            .collect::<Vec<String>>()
+            .join(", ");
+
+        format!("[{}]", elements)
+    }
+
+    fn kind(&self) -> ObjectType {
+        ObjectType::Array
+    }
+
+    fn get_array_elements(&self) -> Option<Vec<ObjectValue>> {
+        let elements: Vec<ObjectValue> = self
+            .elements
+            .iter()
+            .map(|e| e.get_value())
+            .collect::<Vec<ObjectValue>>();
+        Some(elements)
+    }
+
+    fn get_value(&self) -> ObjectValue {
+        ObjectValue::Array(self.elements.clone())
+    }
 }
 
 type NativeFn = fn(Vec<Box<dyn Object>>) -> Box<dyn Object>;
 
+#[derive(Debug)]
 pub struct NativeFunction {
     pub func: NativeFn,
 }
@@ -77,11 +134,12 @@ impl Object for NativeFunction {
 impl CloneBox for NativeFunction {
     fn clone_box(&self) -> Box<dyn Object> {
         Box::new(Self {
-            func: self.func.clone()
+            func: self.func.clone(),
         })
     }
 }
 
+#[derive(Debug)]
 pub struct Str {
     pub value: String,
 }
@@ -108,6 +166,7 @@ impl CloneBox for Str {
     }
 }
 
+#[derive(Debug)]
 pub struct Function {
     pub parameters: Vec<IdentifierExpression>,
     pub body: Box<BlockStatement>,
@@ -149,6 +208,7 @@ impl CloneBox for Function {
     }
 }
 
+#[derive(Debug)]
 pub struct Error {
     pub message: String,
 }
@@ -174,6 +234,7 @@ impl CloneBox for Error {
     }
 }
 
+#[derive(Debug)]
 pub struct Return {
     pub value: Box<dyn Object>,
 }
@@ -208,6 +269,7 @@ impl CloneBox for Return {
     }
 }
 
+#[derive(Debug)]
 pub struct Integer {
     pub value: i64,
 }
@@ -232,6 +294,7 @@ impl CloneBox for Integer {
     }
 }
 
+#[derive(Debug)]
 pub struct Boolean {
     pub value: bool,
 }
@@ -259,6 +322,7 @@ impl CloneBox for Boolean {
     }
 }
 
+#[derive(Debug)]
 pub struct Null;
 
 impl Object for Null {

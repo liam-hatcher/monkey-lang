@@ -6,6 +6,7 @@ use super::Object;
 
 pub type SharedEnvironment = Rc<RefCell<Environment>>;
 
+#[derive(Debug)]
 pub struct Environment {
     store: RefCell<HashMap<String, Box<dyn Object>>>,
     outer: Option<SharedEnvironment>,

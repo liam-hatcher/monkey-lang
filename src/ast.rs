@@ -36,6 +36,19 @@ impl ASTNode for ArrayLiteral {
 }
 
 #[derive(Debug, Clone)]
+pub struct IndexExpression {
+    pub token: Token,
+    pub left: Box<Expression>,
+    pub index: Box<Expression>,
+}
+
+impl ASTNode for IndexExpression {
+    fn to_string(&self) -> String {
+        format!("({}[{}])", self.left.to_string(), self.index.to_string())
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct IdentifierExpression {
     pub token: Token,
     pub value: String,
@@ -223,7 +236,8 @@ pub enum Expression {
     Function(FunctionLiteral),
     Call(CallExpression),
     String(StringLiteral),
-    Array(ArrayLiteral)
+    Array(ArrayLiteral),
+    Index(IndexExpression),
 }
 
 impl ASTNode for Expression {
@@ -241,6 +255,7 @@ impl ASTNode for Expression {
             Call(c) => c.to_string(),
             String(s) => s.to_string(),
             Array(a) => a.to_string(),
+            Index(idx) => idx.to_string(),
         }
     }
 }

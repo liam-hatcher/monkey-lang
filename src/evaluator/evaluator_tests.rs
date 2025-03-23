@@ -381,9 +381,112 @@ fn test_native_functions() {
             Expected::ErrorMessage(error) => {
                 assert!(evaluated.kind() == ObjectType::Error, "object is an error");
 
-               if let ObjectValue::Error(e) = evaluated.get_value() {
-                   assert_eq!(error, e, "Error message is correct");
-               };
+                if let ObjectValue::Error(e) = evaluated.get_value() {
+                    assert_eq!(error, e, "Error message is correct");
+                };
+            }
+        }
+    }
+}
+
+#[test]
+fn test_array_literals() {
+    let input = "[1, 2 * 2, 3 + 3]";
+
+    let evaluated = test_eval(input);
+
+    assert!(
+        evaluated.kind() == ObjectType::Array,
+        "Invalid Array Object"
+    );
+
+    if let Some(elements) = evaluated.get_array_elements() {
+        assert!(elements.len() == 3, "array should have 3 elements");
+
+        assert_eq!(
+            elements[0],
+            ObjectValue::Int(1),
+            "first element is incorrrect"
+        );
+        assert_eq!(
+            elements[1],
+            ObjectValue::Int(4),
+            "second element is incorrrect"
+        );
+        assert_eq!(
+            elements[2],
+            ObjectValue::Int(6),
+            "third element is incorrrect"
+        );
+    } else {
+        panic!("failed to get elements")
+    }
+}
+
+#[test]
+fn test_array_index_expressions() {
+    enum Expected {
+        Int(i64),
+        Null,
+    }
+
+    struct TestCase<'a> {
+        input: &'a str,
+        expected: Expected,
+    };
+
+    let tests = [
+        TestCase {
+            input: "[1, 2, 3][0]",
+            expected: Expected::Int(1),
+        },
+        TestCase {
+            input: "[1, 2, 3][1]",
+            expected: Expected::Int(2),
+        },
+        TestCase {
+            input: "[1, 2, 3][2]",
+            expected: Expected::Int(3),
+        },
+        TestCase {
+            input: "let i = 0; [1][i];",
+            expected: Expected::Int(1),
+        },
+        TestCase {
+            input: "[1, 2, 3][1 + 1];",
+            expected: Expected::Int(3),
+        },
+        TestCase {
+            input: "let myArray = [1, 2, 3]; myArray[2];",
+            expected: Expected::Int(3),
+        },
+        TestCase {
+            input: "let myArray = [1, 2, 3]; myArray[0] + myArray[1] + myArray[2];",
+            expected: Expected::Int(6),
+        },
+        TestCase {
+            input: "let myArray = [1, 2, 3]; let i = myArray[0]; myArray[i]",
+            expected: Expected::Int(2),
+        },
+        TestCase {
+            input: "[1, 2, 3][3]",
+            expected: Expected::Null,
+        },
+        TestCase {
+            input: "[1, 2, 3][-1]",
+            expected: Expected::Null,
+        },
+    ];
+
+    for test in tests {
+        let evaluated = test_eval(test.input);
+
+        match test.expected {
+            Expected::Int(expected) => {
+                test_integer_object(&evaluated, evaluated.get_value(), expected);
+            },
+            Expected::Null => {
+                assert!(evaluated.kind() == ObjectType::Null)
             },
         }
     }
