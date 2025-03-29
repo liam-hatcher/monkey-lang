@@ -1,0 +1,18 @@
+let name = "Monkey";
+let age = 1;
+let inspirations = ["Scheme", "Lisp", "JavaScript", "Clojure"];
+
+let book = {
+     "title": "Writing A Compiler In Go",
+     "author": "Thorsten Ball",
+     "prequel": "Writing An Interpreter In Go"
+};
+
+let printBookName = fn(book) {
+    let title = book["title"];
+    let author = book["author"];
+    
+    puts(author + " - " + title);
+};
+   
+printBookName(book);
