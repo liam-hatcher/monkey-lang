@@ -112,6 +112,7 @@ impl Lexer {
             ']' => Token::new(RBracket, self.ch.into()),
             ',' => Token::new(Comma, self.ch.into()),
             ';' => Token::new(Semicolon, self.ch.into()),
+            ':' => Token::new(Colon, self.ch.into()),
             '"' => Token::new(Str, self.read_string().into()),
             '\0' => {
                 if self.position == 0 {

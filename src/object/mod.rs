@@ -1,10 +1,14 @@
-use std::fmt::Debug;
+use std::{
+    collections::HashMap,
+    fmt::{self, Debug, Display},
+    hash::{Hash, Hasher},
+};
 
 use environment::SharedEnvironment;
 
 use crate::ast::{ASTNode, BlockStatement, IdentifierExpression};
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Hash, Eq, Clone)]
 pub enum ObjectType {
     Function,
     Integer,
@@ -15,6 +19,8 @@ pub enum ObjectType {
     Str,
     NativeFunction,
     Array,
+    HashObject,
+    HashPair,
 }
 
 #[derive(Debug, PartialEq)]
@@ -28,6 +34,42 @@ pub enum ObjectValue {
     Str(String),
     Native(NativeFn),
     Array(Vec<Box<dyn Object>>),
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum HashKey {
+    Int(i64),
+    Bool(bool),
+    Str(String),
+}
+
+impl Display for HashKey {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            HashKey::Int(v) => write!(f, "{}", v),
+            HashKey::Bool(v) => write!(f, "{}", v),
+            HashKey::Str(v) => write!(f, "{}", v),
+        }
+    }
+}
+
+impl Hash for HashKey {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            HashKey::Int(v) => {
+                0u8.hash(state); // Unique tag for integers
+                v.hash(state);
+            }
+            HashKey::Bool(v) => {
+                1u8.hash(state); // Unique tag for booleans
+                v.hash(state);
+            }
+            HashKey::Str(v) => {
+                2u8.hash(state); // Unique tag for strings
+                v.hash(state);
+            }
+        }
+    }
 }
 
 pub trait CloneBox {
@@ -66,6 +108,65 @@ pub trait Object: CloneBox + Debug {
     }
     fn get_array_elements(&self) -> Option<Vec<ObjectValue>> {
         None
+    }
+    fn get_hash_pairs(&self) -> Option<HashMap<HashKey, HashPair>> {
+        None
+    }
+    fn get_hash_pair(&self) -> Option<HashPair> {
+        None
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct HashPair {
+    pub key: Box<dyn Object>,
+    pub value: Box<dyn Object>,
+}
+
+impl Object for HashPair {
+    fn inspect(&self) -> String {
+        self.value.inspect()
+    }
+
+    fn kind(&self) -> ObjectType {
+        ObjectType::HashPair
+    }
+
+    fn get_hash_pair(&self) -> Option<HashPair> {
+        Some(self.clone())
+    }
+}
+
+#[derive(Debug)]
+pub struct MonkeyHash {
+    pub pairs: HashMap<HashKey, HashPair>,
+}
+
+impl Object for MonkeyHash {
+    fn inspect(&self) -> String {
+        let pairs = self
+            .pairs
+            .iter()
+            .map(|(k, v)| format!("{}: {:?}", k.to_string(), v.value.inspect()))
+            .collect::<Vec<String>>()
+            .join(", ");
+
+        format!("{{{}}}", pairs)
+    }
+
+    fn kind(&self) -> ObjectType {
+        ObjectType::HashObject
+    }
+    fn get_hash_pairs(&self) -> Option<HashMap<HashKey, HashPair>> {
+        Some(self.pairs.clone())
+    }
+}
+
+impl CloneBox for MonkeyHash {
+    fn clone_box(&self) -> Box<dyn Object> {
+        Box::new(Self {
+            pairs: self.pairs.clone()
+        })
     }
 }
 

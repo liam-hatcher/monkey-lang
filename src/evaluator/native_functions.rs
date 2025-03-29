@@ -144,6 +144,14 @@ fn push(args: Vec<Box<dyn Object>>) -> Box<dyn Object> {
     })
 }
 
+fn puts(args: Vec<Box<dyn Object>>) -> Box<dyn Object> {
+    for arg in args {
+        println!("{:?}", arg.inspect());
+    }
+
+    Box::new(Null)
+}
+
 pub fn get_native_function(id: &str) -> Option<Box<dyn Object>> {
     match id {
         "len" => Some(Box::new(NativeFunction { func: len })),
@@ -151,6 +159,7 @@ pub fn get_native_function(id: &str) -> Option<Box<dyn Object>> {
         "last" => Some(Box::new(NativeFunction { func: last })),
         "rest" => Some(Box::new(NativeFunction { func: rest })),
         "push" => Some(Box::new(NativeFunction { func: push })),
+        "puts" => Some(Box::new(NativeFunction { func: puts })),
         _ => None,
     }
 }

@@ -15,7 +15,7 @@ pub enum OperatorPrecedence {
     Product,     // *
     Prefix,      // -X or !X
     Call,        // myFunction(X)
-    Index        // myArray[1 + 1]
+    Index,       // myArray[1 + 1]
 }
 
 type PrefixParseFn = fn(&mut Parser) -> Box<Expression>;
@@ -82,6 +82,10 @@ impl<'a> Parser<'a> {
         );
         parser.register_prefix(Str, PrefixParser::Prefix(|p| p.parse_string_literal()));
         parser.register_prefix(LBracket, PrefixParser::Prefix(|p| p.parse_array_literal()));
+        parser.register_prefix(
+            LBrace,
+            PrefixParser::PrefixOptional(|p| p.parse_hash_literal()),
+        );
 
         parser.register_infix(
             Plus,
@@ -186,6 +190,38 @@ impl<'a> Parser<'a> {
             expected_kind, self.peek_token.kind
         ));
         false
+    }
+
+    fn parse_hash_literal(&mut self) -> Option<Box<Expression>> {
+        let token = self.current_token.clone();
+
+        let mut pairs: HashMap<Box<Expression>, Box<Expression>> = HashMap::new();
+
+        while self.peek_token.kind != TokenType::RBrace {
+            self.next_token();
+
+            let key = self.parse_expression(OperatorPrecedence::Lowest).unwrap();
+
+            if !self.expect_peek(TokenType::Colon) {
+                return None;
+            }
+
+            self.next_token();
+
+            let value = self.parse_expression(OperatorPrecedence::Lowest).unwrap();
+
+            pairs.insert(Box::new(key), Box::new(value));
+
+            if self.peek_token.kind != TokenType::RBrace && !self.expect_peek(TokenType::Comma) {
+                return None;
+            }
+        }
+
+        if !self.expect_peek(TokenType::RBrace) {
+            return None;
+        }
+
+        Some(Box::new(Expression::Hash(HashLiteral { token, pairs })))
     }
 
     fn parse_index_expression(&mut self, left: Box<Expression>) -> Option<Box<Expression>> {

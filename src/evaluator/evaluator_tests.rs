@@ -1,7 +1,9 @@
+use std::collections::HashMap;
+
 use crate::{
     ast::ASTNode,
     lexer::Lexer,
-    object::{Object, ObjectType, ObjectValue, environment::Environment},
+    object::{HashKey, Object, ObjectType, ObjectValue, environment::Environment},
     parser::Parser,
 };
 
@@ -205,6 +207,7 @@ if (10 > 1) {
         ),
         ("foobar", "identifier not found: foobar"),
         (r#""Hello" - "World""#, "unknown operator: Str - Str"),
+        (r#"{"name": "Monkey"}[fn(x) { x }];"#, "unusable as hash key: Function"),
     ];
 
     for (input, expected) in tests {
@@ -433,7 +436,7 @@ fn test_array_index_expressions() {
     struct TestCase<'a> {
         input: &'a str,
         expected: Expected,
-    };
+    }
 
     let tests = [
         TestCase {
@@ -484,10 +487,78 @@ fn test_array_index_expressions() {
         match test.expected {
             Expected::Int(expected) => {
                 test_integer_object(&evaluated, evaluated.get_value(), expected);
-            },
+            }
             Expected::Null => {
                 assert!(evaluated.kind() == ObjectType::Null)
-            },
+            }
+        }
+    }
+}
+
+#[test]
+fn test_hash_literals() {
+    let input = r#"
+        let two = "two";
+        {
+            "one": 10 - 9,
+            two: 1 + 1,
+            "thr" + "ee": 6 / 2,
+            4: 4,
+            true: 5,
+            false: 6,
+        }
+    "#;
+
+    let evaluated = test_eval(input);
+
+    assert!(
+        evaluated.kind() == ObjectType::HashObject,
+        "expected a hash object"
+    );
+
+    let Some(h) = evaluated.get_hash_pairs() else {
+        panic!("no hash pairs found");
+    };
+
+    let mut expected: HashMap<HashKey, i64> = HashMap::default();
+    expected.insert(HashKey::Str("one".into()), 1);
+    expected.insert(HashKey::Str("two".into()), 2);
+    expected.insert(HashKey::Str("three".into()), 3);
+    expected.insert(HashKey::Int(4), 4);
+    expected.insert(HashKey::Bool(true), 5);
+    expected.insert(HashKey::Bool(false), 6);
+
+    assert_eq!(h.len(), expected.len(), "hash has wrong number of pairs");
+
+    for (expected_key, expected_value) in expected {
+        let pair = h.get(&expected_key).unwrap();
+        assert_eq!(
+            pair.value.inspect(),
+            expected_value.to_string(),
+            "values do not match"
+        );
+    }
+}
+
+#[test]
+fn test_hash_index_expressions() {
+    let tests = [
+        ("{\"foo\": 5}[\"foo\"]", Some(5)),
+        ("{\"foo\": 5}[\"bar\"]", None),
+        ("let key = \"foo\"; {\"foo\": 5}[key]", Some(5)),
+        ("{}[\"foo\"]", None),
+        ("{5: 5}[5]", Some(5)),
+        ("{true: 5}[true]", Some(5)),
+        ("{false: 5}[false]", Some(5)),
+    ];
+
+    for (input, expected) in tests {
+        let evaluated = test_eval(input);
+
+        if let Some(ex) = expected {
+            test_integer_object(&evaluated, evaluated.get_value(), ex);
+        } else {
+            assert!(evaluated.kind() == ObjectType::Null, "should be null");
         }
     }
 }

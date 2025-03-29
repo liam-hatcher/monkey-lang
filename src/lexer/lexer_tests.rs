@@ -27,6 +27,7 @@ fn test_next_token() {
             "foobar"
             "foo bar"
             [1,2];
+            {"foo": "bar"}
         "#;
 
     let mut l = Lexer::new(input.into());
@@ -113,6 +114,11 @@ fn test_next_token() {
         (TokenType::Int, "2"),
         (TokenType::RBracket, "]"),
         (TokenType::Semicolon, ";"),
+        (TokenType::LBrace, "{"),
+        (TokenType::Str, "foo"),
+        (TokenType::Colon, ":"),
+        (TokenType::Str, "bar"),
+        (TokenType::RBrace, "}"),
         (TokenType::EOF, ""),
     ];
 

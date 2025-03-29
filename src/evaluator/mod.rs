@@ -1,9 +1,15 @@
+use std::collections::HashMap;
+
 use native_functions::get_native_function;
 
 use crate::{
-    ast::{BlockStatement, Expression, IdentifierExpression, IfExpression, Node, Statement},
+    ast::{
+        BlockStatement, Expression, HashLiteral, IdentifierExpression, IfExpression, Node,
+        Statement,
+    },
     object::{
-        Array, Boolean, Error, Function, Integer, Null, Object, ObjectType, ObjectValue, Return, Str
+        Array, Boolean, Error, Function, HashKey, HashPair, Integer, MonkeyHash, Null, Object,
+        ObjectType, ObjectValue, Return, Str,
     },
 };
 
@@ -221,15 +227,54 @@ fn eval_array_index_expression(left: Box<dyn Object>, index: Box<dyn Object>) ->
 
     let elements = match array {
         ObjectValue::Array(objects) => objects,
-        _ => unreachable!()
+        _ => unreachable!(),
     };
-    let max = if elements.len() > 0 { elements.len() - 1 } else { 0 };
+    let max = if elements.len() > 0 {
+        elements.len() - 1
+    } else {
+        0
+    };
 
     if idx < 0 || idx > max as i64 {
-        return Box::new(Null)
+        return Box::new(Null);
     }
-    
+
     elements[idx as usize].clone()
+}
+
+fn unwrap_hash_index(index: ObjectValue) -> HashKey {
+    match index {
+        ObjectValue::Int(i) => HashKey::Int(i),
+        ObjectValue::Bool(b) => HashKey::Bool(b),
+        ObjectValue::Str(s) => HashKey::Str(s),
+        _ => unreachable!(),
+    }
+}
+
+fn eval_hash_index_expression(hash: Box<dyn Object>, index: Box<dyn Object>) -> Box<dyn Object> {
+    let key = match index.kind() {
+        ObjectType::Integer | ObjectType::Boolean | ObjectType::Str => {
+            Some(unwrap_hash_index(index.get_value()))
+        }
+        _ => None,
+    };
+
+    if key.is_none() {
+        return Box::new(Error {
+            message: format!("unusable as hash key: {:?}", index.kind()),
+        });
+    }
+
+    if let Some(pairs) = hash.get_hash_pairs() {
+        let pair = pairs.get(&key.unwrap());
+        if let Some(hp) = pair {
+            return hp.value.clone();
+        } else {
+            return Box::new(Null);
+        }
+    } else {
+        return Box::new(Null);
+    }
 }
 
 fn eval_index_expression(left: Box<dyn Object>, index: Box<dyn Object>) -> Box<dyn Object> {
@@ -237,9 +282,44 @@ fn eval_index_expression(left: Box<dyn Object>, index: Box<dyn Object>) -> Box<d
         return eval_array_index_expression(left, index);
     }
 
-    return Box::new(Error{
-        message: format!("index operator not supported: {:?}", left.kind())
-    })
+    if left.kind() == ObjectType::HashObject {
+        return eval_hash_index_expression(left, index);
+    }
+
+    return Box::new(Error {
+        message: format!("index operator not supported: {:?}", left.kind()),
+    });
+}
+
+fn eval_hash_literal(literal: HashLiteral, env: SharedEnvironment) -> Box<dyn Object> {
+    let mut pairs: HashMap<HashKey, HashPair> = HashMap::default();
+
+    for (k, v) in literal.pairs {
+        let key = eval(Node::Expression(*k), env.clone());
+        if is_error(&key) {
+            return key;
+        }
+
+        let value = eval(Node::Expression(*v), env.clone());
+        if is_error(&value) {
+            return value;
+        }
+
+        let hash_key = match key.get_value() {
+            ObjectValue::Int(i) => HashKey::Int(i),
+            ObjectValue::Bool(b) => HashKey::Bool(b),
+            ObjectValue::Str(s) => HashKey::Str(s),
+            _ => {
+                return Box::new(Error {
+                    message: format!("key of type {:?} is not hashable", key.get_value()),
+                });
+            }
+        };
+
+        pairs.insert(hash_key, HashPair { key, value });
+    }
+
+    Box::new(MonkeyHash { pairs })
 }
 
 fn extend_function_env(function: Box<dyn Object>, args: Vec<Box<dyn Object>>) -> SharedEnvironment {
@@ -384,6 +464,7 @@ pub fn eval(node: Node, env: SharedEnvironment) -> Box<dyn Object> {
                 }
                 return eval_infix_expression(&infix_expression.operator, left, right);
             }
+
             Expression::If(if_expression) => eval_if_expression(if_expression, env),
 
             Expression::Function(function_literal) => Box::new(Function {
@@ -415,11 +496,9 @@ pub fn eval(node: Node, env: SharedEnvironment) -> Box<dyn Object> {
                 if elements.len() == 1 && is_error(&elements[0]) {
                     elements[0].clone()
                 } else {
-                    Box::new(Array {
-                        elements
-                    })
+                    Box::new(Array { elements })
                 }
-            },
+            }
 
             Expression::Index(index_expression) => {
                 let left = eval(Node::Expression(*index_expression.left), env.clone());
@@ -435,7 +514,9 @@ pub fn eval(node: Node, env: SharedEnvironment) -> Box<dyn Object> {
                 }
 
                 eval_index_expression(left, index)
-            },
+            }
+
+            Expression::Hash(hash_literal) => eval_hash_literal(hash_literal, env),
         },
     }
 }

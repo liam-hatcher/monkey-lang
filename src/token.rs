@@ -29,10 +29,11 @@ pub enum TokenType {
     NotEqual,
     Str,
     LBracket,
-    RBracket
+    RBracket,
+    Colon
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Token {
     pub kind: TokenType,
     pub literal: String,

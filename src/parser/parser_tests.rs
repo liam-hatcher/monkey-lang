@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{
     ast::{ASTNode, Expression, InfixExpression, Node, Program, Statement},
     lexer::Lexer,
@@ -620,6 +622,96 @@ fn test_parsing_index_expressions() {
             }
         } else {
             panic!("Invalid IndexExpression");
+        }
+    } else {
+        panic!("Invalid ExpressionStatement");
+    }
+}
+
+#[test]
+fn test_parsing_hash_literals() {
+    let input = "{\"one\": 1, \"two\": 2, \"three\": 3}";
+
+    let program = get_program(input);
+
+    if let Statement::Expression(expr) = &program.statements[0] {
+        if let Expression::Hash(hash_expr) = &*expr.expression {
+            assert!(hash_expr.pairs.len() == 3, "expected 3 pairs");
+
+            let mut expected = HashMap::new();
+            expected.insert("one", 1);
+            expected.insert("two", 2);
+            expected.insert("three", 3);
+
+            for (k, v) in &hash_expr.pairs {
+                if let Expression::String(key) = &**k {
+                    let expected_value = expected.get(&*key.to_string()).unwrap();
+
+                    test_integer_literal(v, *expected_value as i64);
+                } else {
+                    panic!("key is not a string literal");
+                }
+            }
+        } else {
+            panic!("Invalid HashLiteral");
+        }
+    } else {
+        panic!("Invalid ExpressionStatement");
+    }
+}
+
+#[test]
+fn test_empty_hash_literal() {
+    let input = "{}";
+
+    let program = get_program(input);
+
+    if let Statement::Expression(expr) = &program.statements[0] {
+        if let Expression::Hash(hash_expr) = &*expr.expression {
+            assert!(hash_expr.pairs.len() == 0, "expected 0 pairs");
+        } else {
+            panic!("Invalid HashLiteral");
+        }
+    } else {
+        panic!("Invalid ExpressionStatement");
+    }
+}
+
+#[test]
+fn test_parsing_hash_literals_with_expressions() {
+    let input = "{\"one\": 0 + 1, \"two\": 10 - 8, \"three\": 15 / 5}";
+
+    let program = get_program(input);
+
+    if let Statement::Expression(expr) = &program.statements[0] {
+        if let Expression::Hash(hash_expr) = &*expr.expression {
+            assert!(hash_expr.pairs.len() == 3, "expected 3 pairs");
+
+            let mut expected: HashMap<&str, fn(InfixExpression)> = HashMap::new();
+            expected.insert("one", |e: InfixExpression| {
+                test_infix_expression(&e, TestValue::Int(0), &"+".into(), TestValue::Int(1))
+            });
+            expected.insert("two", |e: InfixExpression| {
+                test_infix_expression(&e, TestValue::Int(10), &"-".into(), TestValue::Int(8))
+            });
+            expected.insert("three", |e: InfixExpression| {
+                test_infix_expression(&e, TestValue::Int(15), &"/".into(), TestValue::Int(5))
+            });
+
+            for (key, value) in &hash_expr.pairs {
+                if let Expression::String(key) = &**key {
+                    let test_fn = expected.get(&*key.to_string()).unwrap();
+                    if let Expression::Infix(ie) = &**value {
+                        test_fn(ie.clone());
+                    } else {
+                        unreachable!();
+                    }
+                } else {
+                    panic!("expected string literal");
+                }
+            }
+        } else {
+            panic!("Invalid HashLiteral");
         }
     } else {
         panic!("Invalid ExpressionStatement");

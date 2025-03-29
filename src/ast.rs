@@ -1,10 +1,12 @@
+use std::{collections::HashMap, hash::{Hash, Hasher}};
+
 use crate::token::Token;
 
 pub trait ASTNode {
     fn to_string(&self) -> String;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub struct StringLiteral {
     pub token: Token,
     pub value: String,
@@ -16,7 +18,25 @@ impl ASTNode for StringLiteral {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct HashLiteral {
+    pub token: Token,
+    pub pairs: HashMap<Box<Expression>, Box<Expression>>,
+}
+
+impl ASTNode for HashLiteral {
+    fn to_string(&self) -> String {
+        let pairs: Vec<String> = self
+            .pairs
+            .iter()
+            .map(|(k, v)| format!("{}:{}", k.to_string(), v.to_string()))
+            .collect();
+
+        format!("{{{}}}", pairs.join(", "))
+    }
+}
+
+#[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub struct ArrayLiteral {
     pub token: Token,
     pub elements: Vec<Box<Expression>>,
@@ -35,7 +55,7 @@ impl ASTNode for ArrayLiteral {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub struct IndexExpression {
     pub token: Token,
     pub left: Box<Expression>,
@@ -48,7 +68,7 @@ impl ASTNode for IndexExpression {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub struct IdentifierExpression {
     pub token: Token,
     pub value: String,
@@ -60,7 +80,7 @@ impl ASTNode for IdentifierExpression {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct LetStatement {
     pub token: Token,
     pub id: IdentifierExpression,
@@ -77,7 +97,7 @@ impl ASTNode for LetStatement {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ReturnStatement {
     pub token: Token,
     pub value: Option<Box<Expression>>,
@@ -95,7 +115,7 @@ impl ASTNode for ReturnStatement {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub struct IntegerLiteral {
     pub token: Token,
     pub value: i64,
@@ -107,7 +127,7 @@ impl ASTNode for IntegerLiteral {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub struct PrefixExpression {
     pub token: Token,
     pub operator: String,
@@ -123,7 +143,7 @@ impl ASTNode for PrefixExpression {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub struct InfixExpression {
     pub token: Token,
     pub left: Box<Expression>,
@@ -140,7 +160,7 @@ impl ASTNode for InfixExpression {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub struct BooleanExpression {
     pub token: Token,
     pub value: bool,
@@ -152,7 +172,7 @@ impl ASTNode for BooleanExpression {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub struct IfExpression {
     pub token: Token,
     pub condition: Box<Expression>,
@@ -180,7 +200,7 @@ impl ASTNode for IfExpression {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub struct FunctionLiteral {
     pub token: Token,
     pub parameters: Vec<IdentifierExpression>,
@@ -205,7 +225,7 @@ impl ASTNode for FunctionLiteral {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub struct CallExpression {
     pub token: Token,
     pub function: Box<Expression>,
@@ -225,7 +245,7 @@ impl ASTNode for CallExpression {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Expression {
     Identifier(IdentifierExpression),
     Integer(IntegerLiteral),
@@ -238,7 +258,15 @@ pub enum Expression {
     String(StringLiteral),
     Array(ArrayLiteral),
     Index(IndexExpression),
+    Hash(HashLiteral),
 }
+
+impl Hash for Expression {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+       self.to_string().hash(state);
+    }
+}
+
 
 impl ASTNode for Expression {
     // Is this impl even necessary? seems dumb
@@ -256,11 +284,12 @@ impl ASTNode for Expression {
             String(s) => s.to_string(),
             Array(a) => a.to_string(),
             Index(idx) => idx.to_string(),
+            Hash(h) => h.to_string(),
         }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ExpressionStatement {
     pub token: Token,
     pub expression: Box<Expression>,
@@ -272,7 +301,7 @@ impl ASTNode for ExpressionStatement {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct BlockStatement {
     pub token: Token,
     pub statements: Box<Vec<Statement>>,
@@ -288,7 +317,7 @@ impl ASTNode for BlockStatement {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Statement {
     Let(LetStatement),
     Return(ReturnStatement),
