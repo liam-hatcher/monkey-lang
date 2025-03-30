@@ -1,13 +1,16 @@
 mod ast;
+mod code;
+mod compiler;
 mod evaluator;
 mod lexer;
 mod object;
 mod parser;
 mod repl;
 mod token;
+mod vm;
 
-use std::{env, fs::File};
 use std::io::{self, Read};
+use std::{env, fs::File};
 
 use evaluator::eval;
 use lexer::Lexer;
@@ -25,7 +28,7 @@ fn run_file(file_contents: String) {
     eval(program, env);
 }
 
-fn main() -> io::Result<()>  {
+fn main() -> io::Result<()> {
     let args: Vec<String> = env::args().collect();
 
     if args.len() == 1 {
@@ -43,7 +46,7 @@ fn main() -> io::Result<()>  {
 
     let mut contents = String::new();
     file.read_to_string(&mut contents)?;
-    
+
     run_file(contents);
 
     Ok(())
