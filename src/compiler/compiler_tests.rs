@@ -2,7 +2,7 @@ use std::any::Any;
 
 use crate::{
     ast::Node,
-    code::{Instructions, Opcode, lookup, make, read_operands},
+    code::{Instructions, Opcode, lookup_opcode_definition, make, read_operands},
     lexer::Lexer,
     object::{Object, ObjectType, ObjectValue},
     parser::Parser,
@@ -51,7 +51,6 @@ fn test_constants(expected: &Vec<Box<dyn Any>>, actual: Vec<Box<dyn Object>>) {
 struct CompilerTestCase {
     input: String,
     expected_constants: Vec<Box<dyn Any>>,
-    // expected_constants: Vec<i32>,
     expected_instructions: Vec<Instructions>,
 }
 
@@ -73,15 +72,67 @@ fn run_compiler_tests(tests: &[CompilerTestCase]) {
 
 #[test]
 fn test_integer_arithmetic() {
-    let tests = [CompilerTestCase {
-        input: "1 + 2".into(),
-        expected_constants: vec![Box::new(1), Box::new(2)],
-        expected_instructions: vec![
-            make(Opcode::OpConstant, &[0]),
-            make(Opcode::OpConstant, &[1]),
-            make(Opcode::OpAdd, &[]),
-        ],
-    }];
+    let tests = [
+        CompilerTestCase {
+            input: "1 + 2".into(),
+            expected_constants: vec![Box::new(1), Box::new(2)],
+            expected_instructions: vec![
+                make(Opcode::OpConstant, &[0]),
+                make(Opcode::OpConstant, &[1]),
+                make(Opcode::OpAdd, &[]),
+                make(Opcode::OpPop, &[]),
+            ],
+        },
+        CompilerTestCase {
+            input: "1; 2".into(),
+            expected_constants: vec![Box::new(1), Box::new(2)],
+            expected_instructions: vec![
+                make(Opcode::OpConstant, &[0]),
+                make(Opcode::OpPop, &[]),
+                make(Opcode::OpConstant, &[1]),
+                make(Opcode::OpPop, &[]),
+            ],
+        },
+        CompilerTestCase {
+            input: "1 - 2".into(),
+            expected_constants: vec![Box::new(1), Box::new(2)],
+            expected_instructions: vec![
+                make(Opcode::OpConstant, &[0]),
+                make(Opcode::OpConstant, &[1]),
+                make(Opcode::OpSub, &[]),
+                make(Opcode::OpPop, &[]),
+            ],
+        },
+        CompilerTestCase {
+            input: "1 * 2".into(),
+            expected_constants: vec![Box::new(1), Box::new(2)],
+            expected_instructions: vec![
+                make(Opcode::OpConstant, &[0]),
+                make(Opcode::OpConstant, &[1]),
+                make(Opcode::OpMul, &[]),
+                make(Opcode::OpPop, &[]),
+            ],
+        },
+        CompilerTestCase {
+            input: "2 / 1".into(),
+            expected_constants: vec![Box::new(2), Box::new(1)],
+            expected_instructions: vec![
+                make(Opcode::OpConstant, &[0]),
+                make(Opcode::OpConstant, &[1]),
+                make(Opcode::OpDiv, &[]),
+                make(Opcode::OpPop, &[]),
+            ],
+        },
+        CompilerTestCase {
+            input: "-1".into(),
+            expected_constants: vec![Box::new(1)],
+            expected_instructions: vec![
+                make(Opcode::OpConstant, &[0]),
+                make(Opcode::OpMinus, &[]),
+                make(Opcode::OpPop, &[]),
+            ],
+        },
+    ];
 
     run_compiler_tests(&tests);
 }
@@ -103,7 +154,7 @@ fn test_read_operands() {
     for test in tests {
         let instruction = make(test.op, test.operands);
 
-        let def = lookup(test.op);
+        let def = lookup_opcode_definition(test.op);
 
         let (operands_read, n) = read_operands(&def, &instruction[1..].to_vec());
         assert_eq!(n, test.bytes_read, "n wrong");
@@ -112,4 +163,91 @@ fn test_read_operands() {
             assert_eq!(operands_read[i], *expected, "operand wrong");
         }
     }
+}
+
+#[test]
+fn test_boolean_expressions() {
+    let tests = [
+        CompilerTestCase {
+            input: "true".into(),
+            expected_constants: vec![],
+            expected_instructions: vec![make(Opcode::OpTrue, &[]), make(Opcode::OpPop, &[])],
+        },
+        CompilerTestCase {
+            input: "false".into(),
+            expected_constants: vec![],
+            expected_instructions: vec![make(Opcode::OpFalse, &[]), make(Opcode::OpPop, &[])],
+        },
+        CompilerTestCase {
+            input: "1 > 2".into(),
+            expected_constants: vec![Box::new(1), Box::new(2)],
+            expected_instructions: vec![
+                make(Opcode::OpConstant, &[0]),
+                make(Opcode::OpConstant, &[1]),
+                make(Opcode::OpGreaterThan, &[]),
+                make(Opcode::OpPop, &[]),
+            ],
+        },
+        CompilerTestCase {
+            input: "1 < 2".into(),
+            expected_constants: vec![Box::new(2), Box::new(1)],
+            expected_instructions: vec![
+                make(Opcode::OpConstant, &[0]),
+                make(Opcode::OpConstant, &[1]),
+                make(Opcode::OpGreaterThan, &[]),
+                make(Opcode::OpPop, &[]),
+            ],
+        },
+        CompilerTestCase {
+            input: "1 == 2".into(),
+            expected_constants: vec![Box::new(1), Box::new(2)],
+            expected_instructions: vec![
+                make(Opcode::OpConstant, &[0]),
+                make(Opcode::OpConstant, &[1]),
+                make(Opcode::OpEqual, &[]),
+                make(Opcode::OpPop, &[]),
+            ],
+        },
+        CompilerTestCase {
+            input: "1 != 2".into(),
+            expected_constants: vec![Box::new(1), Box::new(2)],
+            expected_instructions: vec![
+                make(Opcode::OpConstant, &[0]),
+                make(Opcode::OpConstant, &[1]),
+                make(Opcode::OpNotEqual, &[]),
+                make(Opcode::OpPop, &[]),
+            ],
+        },
+        CompilerTestCase {
+            input: "true == false".into(),
+            expected_constants: vec![],
+            expected_instructions: vec![
+                make(Opcode::OpTrue, &[]),
+                make(Opcode::OpFalse, &[]),
+                make(Opcode::OpEqual, &[]),
+                make(Opcode::OpPop, &[]),
+            ],
+        },
+        CompilerTestCase {
+            input: "true != false".into(),
+            expected_constants: vec![],
+            expected_instructions: vec![
+                make(Opcode::OpTrue, &[]),
+                make(Opcode::OpFalse, &[]),
+                make(Opcode::OpNotEqual, &[]),
+                make(Opcode::OpPop, &[]),
+            ],
+        },
+        CompilerTestCase {
+            input: "!true".into(),
+            expected_constants: vec![],
+            expected_instructions: vec![
+                make(Opcode::OpTrue, &[]),
+                make(Opcode::OpBang, &[]),
+                make(Opcode::OpPop, &[]),
+            ],
+        },
+    ];
+
+    run_compiler_tests(&tests);
 }

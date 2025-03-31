@@ -1,4 +1,4 @@
-use std::fmt::{self, Write};
+use std::fmt::Write;
 
 use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
 
@@ -16,7 +16,7 @@ impl InstructionsExt for Instructions {
         let mut i = 0;
         while i < self.len() {
             let inst = self[i];
-            let def = Opcode::from_u8(inst).map(lookup);
+            let def = Opcode::from_u8(inst).map(lookup_opcode_definition);
 
             if def.is_none() {
                 output += "ERROR\n";
@@ -59,6 +59,17 @@ impl InstructionsExt for Instructions {
 pub enum Opcode {
     OpConstant = 1,
     OpAdd = 2,
+    OpPop = 3,
+    OpSub = 4,
+    OpMul = 5,
+    OpDiv = 6,
+    OpTrue = 7,
+    OpFalse = 8,
+    OpEqual = 9,
+    OpNotEqual = 10,
+    OpGreaterThan = 11,
+    OpMinus = 12,
+    OpBang = 13,
 }
 
 impl Opcode {
@@ -66,6 +77,17 @@ impl Opcode {
         match value {
             1 => Some(Opcode::OpConstant),
             2 => Some(Opcode::OpAdd),
+            3 => Some(Opcode::OpPop),
+            4 => Some(Opcode::OpSub),
+            5 => Some(Opcode::OpMul),
+            6 => Some(Opcode::OpDiv),
+            7 => Some(Opcode::OpTrue),
+            8 => Some(Opcode::OpFalse),
+            9 => Some(Opcode::OpEqual),
+            10 => Some(Opcode::OpNotEqual),
+            11 => Some(Opcode::OpGreaterThan),
+            12 => Some(Opcode::OpMinus),
+            13 => Some(Opcode::OpBang),
             _ => None,
         }
     }
@@ -76,7 +98,7 @@ pub struct Definition {
     operand_widths: Vec<i32>,
 }
 
-pub fn lookup(op: Opcode) -> Definition {
+pub fn lookup_opcode_definition(op: Opcode) -> Definition {
     match op {
         Opcode::OpConstant => Definition {
             name: "OpConstant",
@@ -86,12 +108,56 @@ pub fn lookup(op: Opcode) -> Definition {
             name: "OpAdd",
             operand_widths: vec![],
         },
-        _ => panic!("op code undefined!"), // TODO: should this actually panic?
+        Opcode::OpPop => Definition {
+            name: "OpPop",
+            operand_widths: vec![],
+        },
+        Opcode::OpSub => Definition {
+            name: "OpSub",
+            operand_widths: vec![],
+        },
+        Opcode::OpMul => Definition {
+            name: "OpMul",
+            operand_widths: vec![],
+        },
+        Opcode::OpDiv => Definition {
+            name: "OpDiv",
+            operand_widths: vec![],
+        },
+        Opcode::OpTrue => Definition {
+            name: "OpTrue",
+            operand_widths: vec![],
+        },
+        Opcode::OpFalse => Definition {
+            name: "OpFalse",
+            operand_widths: vec![],
+        },
+        Opcode::OpEqual => Definition {
+            name: "OpEqual",
+            operand_widths: vec![],
+        },
+        Opcode::OpNotEqual => Definition {
+            name: "OpNotEqual",
+            operand_widths: vec![],
+        },
+        Opcode::OpGreaterThan => Definition {
+            name: "OpGreaterThan",
+            operand_widths: vec![],
+        },
+        Opcode::OpMinus => Definition {
+            name: "OpMinus",
+            operand_widths: vec![],
+        },
+        Opcode::OpBang => Definition {
+            name: "OpBang",
+            operand_widths: vec![],
+        },
+        // _ => panic!("op code undefined!"), // TODO: should this actually panic?
     }
 }
 
 pub fn make(op: Opcode, operands: &[i32]) -> Vec<u8> {
-    let definition = lookup(op);
+    let definition = lookup_opcode_definition(op);
 
     let mut instruction_length = 1;
     for w in definition.operand_widths.iter() {

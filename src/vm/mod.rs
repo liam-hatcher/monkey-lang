@@ -3,7 +3,7 @@ use std::fmt;
 use crate::{
     code::{Instructions, Opcode, read_u16},
     compiler::ByteCode,
-    object::{Integer, Object, ObjectType, ObjectValue},
+    object::{Boolean, Integer, Null, Object, ObjectType, ObjectValue},
 };
 
 const STACK_SIZE: usize = 2048;
@@ -11,16 +11,20 @@ const STACK_SIZE: usize = 2048;
 #[derive(Debug)]
 pub enum VMError {
     StackOverflow,
-    UnknownOpcode,
+    // UnknownOpcode,
     TypeMismatch,
+    InvalidOperator,
+    UnknownOperator,
 }
 
 impl fmt::Display for VMError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
+        match self {
             VMError::StackOverflow => write!(f, "Stack Overflow occurred"),
-            VMError::UnknownOpcode => write!(f, "Unknown opcode"),
+            // VMError::UnknownOpcode => write!(f, "Unknown opcode"),
             VMError::TypeMismatch => write!(f, "invalid type"),
+            VMError::InvalidOperator => write!(f, "invalid operator"),
+            VMError::UnknownOperator => write!(f, "unknown operator"),
         }
     }
 }
@@ -40,7 +44,7 @@ impl MonkeyVM {
         Self {
             instructions: bytecode.instructions,
             constants: bytecode.constants,
-            stack: Vec::with_capacity(STACK_SIZE),
+            stack: vec![Box::new(Null); STACK_SIZE],
             stack_pointer: 0,
         }
     }
@@ -53,19 +57,24 @@ impl MonkeyVM {
         }
     }
 
+    pub fn last_popped_stack_elem(&self) -> &Box<dyn Object> {
+        &self.stack[self.stack_pointer]
+    }
+
     fn push(&mut self, obj: Box<dyn Object>) -> Result<(), VMError> {
         if self.stack_pointer >= STACK_SIZE {
             return Err(VMError::StackOverflow);
         }
 
-        self.stack.push(obj.clone_box());
+        self.stack[self.stack_pointer] = obj.clone_box();
+
         self.stack_pointer += 1;
 
         Ok(())
     }
 
     fn pop(&mut self) -> Box<dyn Object> {
-        let obj = self.stack.pop().unwrap();
+        let obj = self.stack[self.stack_pointer - 1].clone();
         self.stack_pointer -= 1;
 
         obj
@@ -82,6 +91,92 @@ impl MonkeyVM {
         }
     }
 
+    fn execute_binop(&mut self, op: Opcode) -> Result<(), VMError> {
+        let right = self.pop();
+        let left = self.pop();
+        let left_value = self.unwrap_integer(left)?;
+        let right_value = self.unwrap_integer(right)?;
+
+        let result = match op {
+            Opcode::OpAdd => left_value + right_value,
+            Opcode::OpSub => left_value - right_value,
+            Opcode::OpMul => left_value * right_value,
+            Opcode::OpDiv => left_value / right_value,
+            _ => return Err(VMError::InvalidOperator),
+        };
+
+        self.push(Box::new(Integer {
+            value: result as i64,
+        }))?;
+
+        Ok(())
+    }
+
+    fn execute_integer_comparison(
+        &mut self,
+        op: Opcode,
+        left: Box<dyn Object>,
+        right: Box<dyn Object>,
+    ) -> Result<(), VMError> {
+        let left_value = self.unwrap_integer(left)?;
+        let right_value = self.unwrap_integer(right)?;
+
+        match op {
+            Opcode::OpEqual => self.push(Box::new(Boolean {
+                value: right_value == left_value,
+            })),
+            Opcode::OpNotEqual => self.push(Box::new(Boolean {
+                value: right_value != left_value,
+            })),
+            Opcode::OpGreaterThan => self.push(Box::new(Boolean {
+                value: left_value > right_value,
+            })),
+            _ => Err(VMError::UnknownOperator),
+        }
+    }
+
+    fn execute_comparison(&mut self, op: Opcode) -> Result<(), VMError> {
+        let right = self.pop();
+        let left = self.pop();
+
+        if left.kind() == ObjectType::Integer && right.kind() == ObjectType::Integer {
+            return self.execute_integer_comparison(op, left, right);
+        }
+
+        match op {
+            Opcode::OpEqual => self.push(Box::new(Boolean {
+                value: right.get_value() == left.get_value(),
+            })),
+            Opcode::OpNotEqual => self.push(Box::new(Boolean {
+                value: right.get_value() != left.get_value(),
+            })),
+            _ => Err(VMError::UnknownOperator),
+        }
+    }
+
+    fn execute_bang_op(&mut self) -> Result<(), VMError> {
+        let operand = self.pop();
+
+        match operand.get_value() {
+            ObjectValue::Bool(b) => self.push(Box::new(Boolean { value: !b })),
+            _ => self.push(Box::new(Boolean { value: false })),
+        }
+    }
+
+    fn execute_minus_op(&mut self) -> Result<(), VMError> {
+        let operand = self.pop();
+
+        if operand.kind() != ObjectType::Integer {
+            return Err(VMError::TypeMismatch);
+        }
+
+        let ObjectValue::Int(value) = operand.get_value() else {
+            unreachable!();
+        };
+
+        self.push(Box::new(Integer { value: -value }))
+    }
+
     pub fn run(&mut self) -> Result<(), VMError> {
         let mut ip = 0;
         while ip < self.instructions.len() {
@@ -95,18 +190,34 @@ impl MonkeyVM {
 
                     self.push(obj.clone())?;
                 }
-                Opcode::OpAdd => {
-                    let right = self.pop();
-                    let left = self.pop();
-                    let left_value = self.unwrap_integer(left)?;
-                    let right_value = self.unwrap_integer(right)?;
-                    println!("LEFT {} RIGHT {}", left_value, right_value);
-                    let result = left_value + right_value;
-                    self.push(Box::new(Integer {
-                        value: result as i64,
-                    }))?;
+
+                Opcode::OpAdd | Opcode::OpSub | Opcode::OpMul | Opcode::OpDiv => {
+                    self.execute_binop(op)?
                 }
-                _ => return Err(VMError::UnknownOpcode),
+
+                Opcode::OpPop => {
+                    self.pop();
+                }
+
+                Opcode::OpTrue => {
+                    // todo: figure out how to return the same shared reference,
+                    // since booleans are such simple objects
+                    self.push(Box::new(Boolean { value: true }))?;
+                }
+
+                Opcode::OpFalse => {
+                    // todo: figure out how to return the same shared reference,
+                    // since booleans are such simple objects
+                    self.push(Box::new(Boolean { value: false }))?;
+                }
+
+                Opcode::OpEqual | Opcode::OpNotEqual | Opcode::OpGreaterThan => {
+                    self.execute_comparison(op)?;
+                }
+
+                Opcode::OpBang => self.execute_bang_op()?,
+
+                Opcode::OpMinus => self.execute_minus_op()?,
             }
 
             ip += 1;

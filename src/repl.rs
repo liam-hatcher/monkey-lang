@@ -1,6 +1,6 @@
 use std::io::{self, Write};
 
-use crate::{evaluator::eval, lexer::Lexer, object::environment::Environment, parser::Parser};
+use crate::{compiler::Compiler, lexer::Lexer, parser::Parser, vm::MonkeyVM};
 
 const MONKEY_FACE: &str = r#"            
             __,__
@@ -17,7 +17,6 @@ const MONKEY_FACE: &str = r#"
 "#;
 
 pub fn start_repl() {
-    let environment = Environment::new();
     print!("{MONKEY_FACE}");
     println!("Welcome to the Monkey Programming Language, enter some commands: \n");
     loop {
@@ -44,13 +43,34 @@ pub fn start_repl() {
             continue;
         }
 
-        let evaluated = eval(program, environment.clone());
-        let output = evaluated.inspect();
+        let mut compiler = Compiler::new();
+        let program = compiler.compile(program);
+        if program.is_err() {
+            println!("Compilation failed: {}", program.err().unwrap());
+            continue;
+        }
+
+        let mut vm = MonkeyVM::new(compiler.bytecode());
+        let result = vm.run();
+
+        match result {
+            Ok(_) => {
+                let last_popped = vm.last_popped_stack_elem();
+                println!("{}", last_popped.inspect())
+            }
+            Err(e) => {
+                println!("Bytecode execution failed: {}", e);
+                continue;
+            }
+        }
+
+        // let evaluated = eval(program, environment.clone());
+        // let output = evaluated.inspect();
 
         // environment.borrow().print_environment();
 
-        if output != "null" {
-            println!("{}", output);
-        }
+        // if output != "null" {
+        //     println!("{}", output);
+        // }
     }
 }

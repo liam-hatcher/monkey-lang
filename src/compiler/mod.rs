@@ -8,13 +8,13 @@ use crate::{
 
 #[derive(Debug)]
 pub enum CompilerError {
-    UnknownOperator,
+    UnknownOperator(String),
 }
 
 impl fmt::Display for CompilerError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            CompilerError::UnknownOperator => write!(f, "unknown operator!"),
+        match self {
+            CompilerError::UnknownOperator(s) => write!(f, "unknown operator: {}", s),
         }
     }
 }
@@ -74,6 +74,8 @@ impl Compiler {
                 Statement::Expression(expression_statement) => {
                     self.compile(Node::Expression(*expression_statement.expression))?;
 
+                    self.emit(Opcode::OpPop, &[]);
+
                     Ok(())
                 }
 
@@ -84,18 +86,32 @@ impl Compiler {
 
             Node::Expression(expression) => match expression {
                 Expression::Infix(infix_expression) => {
+                    if infix_expression.operator == "<" {
+                        self.compile(Node::Expression(*infix_expression.right))?;
+
+                        self.compile(Node::Expression(*infix_expression.left))?;
+
+                        self.emit(Opcode::OpGreaterThan, &[]);
+
+                        return Ok(());
+                    }
+
                     self.compile(Node::Expression(*infix_expression.left))?;
 
                     self.compile(Node::Expression(*infix_expression.right))?;
 
                     match infix_expression.operator.as_str() {
-                        "+" => {
-                            self.emit(Opcode::OpAdd, &[]);
+                        "+" => self.emit(Opcode::OpAdd, &[]),
+                        "-" => self.emit(Opcode::OpSub, &[]),
+                        "*" => self.emit(Opcode::OpMul, &[]),
+                        "/" => self.emit(Opcode::OpDiv, &[]),
+                        ">" => self.emit(Opcode::OpGreaterThan, &[]),
+                        "==" => self.emit(Opcode::OpEqual, &[]),
+                        "!=" => self.emit(Opcode::OpNotEqual, &[]),
+                        _ => return Err(CompilerError::UnknownOperator(infix_expression.operator)),
+                    };
 
-                            Ok(())
-                        }
-                        _ => Err(CompilerError::UnknownOperator),
-                    }
+                    Ok(())
                 }
 
                 Expression::Integer(integer_literal) => {
@@ -110,9 +126,29 @@ impl Compiler {
                     Ok(())
                 }
 
+                Expression::Bool(boolean_expression) => {
+                    if boolean_expression.value {
+                        self.emit(Opcode::OpTrue, &[]);
+                    } else {
+                        self.emit(Opcode::OpFalse, &[]);
+                    }
+
+                    Ok(())
+                }
+
+                Expression::Prefix(prefix_expression) => {
+                    self.compile(Node::Expression(*prefix_expression.right))?;
+
+                    match prefix_expression.operator.as_str() {
+                        "!" => self.emit(Opcode::OpBang, &[]),
+                        "-" => self.emit(Opcode::OpMinus, &[]),
+                        _ => return Err(CompilerError::UnknownOperator(prefix_expression.operator))
+                    };
+
+                    Ok(())
+                }
+
                 Expression::Identifier(identifier_expression) => todo!(),
-                Expression::Prefix(prefix_expression) => todo!(),
-                Expression::Bool(boolean_expression) => todo!(),
                 Expression::If(if_expression) => todo!(),
                 Expression::Function(function_literal) => todo!(),
                 Expression::Call(call_expression) => todo!(),
