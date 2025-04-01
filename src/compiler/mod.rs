@@ -21,6 +21,12 @@ impl fmt::Display for CompilerError {
 
 impl std::error::Error for CompilerError {}
 
+#[derive(Debug, Clone)]
+pub struct EmittedInstruction {
+    pub op_code: Opcode,
+    pub position: i32,
+}
+
 pub struct ByteCode {
     pub instructions: Instructions,
     pub constants: Vec<Box<dyn Object>>,
@@ -29,6 +35,8 @@ pub struct ByteCode {
 pub struct Compiler {
     instructions: Instructions,
     constants: Vec<Box<dyn Object>>,
+    last_instruction: EmittedInstruction,
+    previous_instruction: EmittedInstruction,
 }
 
 impl Compiler {
@@ -36,6 +44,14 @@ impl Compiler {
         Self {
             instructions: Instructions::new(),
             constants: vec![],
+            last_instruction: EmittedInstruction {
+                op_code: Opcode::OpNoop,
+                position: -1,
+            },
+            previous_instruction: EmittedInstruction {
+                op_code: Opcode::OpNoop,
+                position: -1,
+            },
         }
     }
 
@@ -52,10 +68,40 @@ impl Compiler {
         pos_new_instruction as i32
     }
 
+    fn set_last_instruction(&mut self, op_code: Opcode, position: i32) {
+        let previous = self.last_instruction.clone();
+        let last = EmittedInstruction { op_code, position };
+
+        self.previous_instruction = previous;
+        self.last_instruction = last;
+    }
+
+    fn remove_last_pop(&mut self) {
+        self.instructions
+            .truncate(self.last_instruction.position as usize);
+
+        self.last_instruction = self.previous_instruction.clone();
+    }
+
+    fn change_operand(&mut self, op_pos: i32, operand: i32) {
+        let op = Opcode::from_u8(self.instructions[op_pos as usize]).unwrap();
+        let new_instruction = make(op, &[operand]);
+
+        self.replace_instruction(op_pos, new_instruction);
+    }
+
+    fn replace_instruction(&mut self, position: i32, new_instruction: Vec<u8>) {
+        for i in 0..new_instruction.len() {
+            self.instructions[position as usize + i] = new_instruction[i]
+        }
+    }
+
     fn emit(&mut self, op: Opcode, operands: &[i32]) -> i32 {
         let instruction = make(op, operands);
 
         let position = self.add_instruction(instruction);
+
+        self.set_last_instruction(op, position);
 
         position
     }
@@ -79,9 +125,16 @@ impl Compiler {
                     Ok(())
                 }
 
+                Statement::Block(block_statement) => {
+                    for s in *block_statement.statements {
+                        self.compile(Node::Statement(s))?;
+                    }
+
+                    Ok(())
+                }
+
                 Statement::Let(let_statement) => todo!(),
                 Statement::Return(return_statement) => todo!(),
-                Statement::Block(block_statement) => todo!(),
             },
 
             Node::Expression(expression) => match expression {
@@ -142,14 +195,55 @@ impl Compiler {
                     match prefix_expression.operator.as_str() {
                         "!" => self.emit(Opcode::OpBang, &[]),
                         "-" => self.emit(Opcode::OpMinus, &[]),
-                        _ => return Err(CompilerError::UnknownOperator(prefix_expression.operator))
+                        _ => {
+                            return Err(CompilerError::UnknownOperator(prefix_expression.operator));
+                        }
                     };
 
                     Ok(())
                 }
 
+                Expression::If(if_expression) => {
+                    self.compile(Node::Expression(*if_expression.condition))?;
+
+                    // Emit an `OpJumpNotTruthy` with a bogus value
+                    let jump_not_truthy_pos = self.emit(Opcode::OpJumpNotTruthy, &[9999]);
+
+                    let consequence = if_expression.consequence;
+
+                    if consequence.is_some() {
+                        self.compile(Node::Statement(Statement::Block(*consequence.unwrap())))?;
+                    }
+
+                    if self.last_instruction.op_code == Opcode::OpPop {
+                        self.remove_last_pop();
+                    }
+
+                    // Emit an `OpJump` with a bogus value
+                    let jump_pos = self.emit(Opcode::OpJump, &[9999]);
+
+                    let after_consequence_pos = self.instructions.len();
+                    self.change_operand(jump_not_truthy_pos, after_consequence_pos as i32);
+
+                    if if_expression.alternative.is_none() {
+                        self.emit(Opcode::OpNull, &[]);
+                    } else {
+                        self.compile(Node::Statement(Statement::Block(
+                            *if_expression.alternative.unwrap(),
+                        )))?;
+
+                        if self.last_instruction.op_code == Opcode::OpPop {
+                            self.remove_last_pop();
+                        }
+                    }
+
+                    let after_alternative_pos = self.instructions.len();
+                    self.change_operand(jump_pos, after_alternative_pos as i32);
+
+                    Ok(())
+                }
+
                 Expression::Identifier(identifier_expression) => todo!(),
-                Expression::If(if_expression) => todo!(),
                 Expression::Function(function_literal) => todo!(),
                 Expression::Call(call_expression) => todo!(),
                 Expression::String(string_literal) => todo!(),

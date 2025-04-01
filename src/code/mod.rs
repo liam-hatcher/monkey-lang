@@ -57,6 +57,7 @@ impl InstructionsExt for Instructions {
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Opcode {
+    OpNoop = 0,
     OpConstant = 1,
     OpAdd = 2,
     OpPop = 3,
@@ -70,11 +71,15 @@ pub enum Opcode {
     OpGreaterThan = 11,
     OpMinus = 12,
     OpBang = 13,
+    OpJumpNotTruthy = 14,
+    OpJump = 15,
+    OpNull = 16,
 }
 
 impl Opcode {
     pub fn from_u8(value: u8) -> Option<Self> {
         match value {
+            0 => Some(Opcode::OpNoop),
             1 => Some(Opcode::OpConstant),
             2 => Some(Opcode::OpAdd),
             3 => Some(Opcode::OpPop),
@@ -88,6 +93,9 @@ impl Opcode {
             11 => Some(Opcode::OpGreaterThan),
             12 => Some(Opcode::OpMinus),
             13 => Some(Opcode::OpBang),
+            14 => Some(Opcode::OpJumpNotTruthy),
+            15 => Some(Opcode::OpJump),
+            16 => Some(Opcode::OpNull),
             _ => None,
         }
     }
@@ -100,6 +108,10 @@ pub struct Definition {
 
 pub fn lookup_opcode_definition(op: Opcode) -> Definition {
     match op {
+        Opcode::OpNoop => Definition {
+            name: "OpNoop",
+            operand_widths: vec![],
+        },
         Opcode::OpConstant => Definition {
             name: "OpConstant",
             operand_widths: vec![2],
@@ -152,6 +164,15 @@ pub fn lookup_opcode_definition(op: Opcode) -> Definition {
             name: "OpBang",
             operand_widths: vec![],
         },
+        Opcode::OpJumpNotTruthy => Definition {
+            name: "OpJumpNotTruthy",
+            operand_widths: vec![2],
+        },
+        Opcode::OpJump => Definition {
+            name: "OpJump",
+            operand_widths: vec![2],
+        },
+        Opcode::OpNull => Definition { name: "OpNull", operand_widths: vec![] }
         // _ => panic!("op code undefined!"), // TODO: should this actually panic?
     }
 }

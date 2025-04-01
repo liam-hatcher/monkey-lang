@@ -4,7 +4,7 @@ use crate::{
     ast::Node,
     compiler::Compiler,
     lexer::Lexer,
-    object::{Object, ObjectType, ObjectValue},
+    object::{Null, Object, ObjectType, ObjectValue},
     parser::Parser,
     vm::MonkeyVM,
 };
@@ -43,6 +43,8 @@ fn test_expected_object(expected: &Box<dyn Any>, actual: Box<dyn Object>) {
         test_integer_object(*value, &actual);
     } else if let Some(value) = expected.downcast_ref::<bool>() {
         test_boolean_object(*value, &actual);
+    } else if let Some(n) = expected.downcast_ref::<Null>() {
+        assert!(actual.kind() == ObjectType::Null, "object is not Null");
     } else {
         unreachable!();
     }
@@ -249,6 +251,58 @@ fn test_boolean_expressions() {
         VMTestCase {
             input: "!!5".into(),
             expected: Box::new(true),
+        },
+        VMTestCase {
+            input: "!(if (false) { 5; })".into(),
+            expected: Box::new(true),
+        },
+    ];
+
+    run_vm_tests(&tests);
+}
+
+#[test]
+fn test_conditionals() {
+    let tests = [
+        VMTestCase {
+            input: "if (true) { 10 }".into(),
+            expected: Box::new(10),
+        },
+        VMTestCase {
+            input: "if (true) { 10 } else { 20 }".into(),
+            expected: Box::new(10),
+        },
+        VMTestCase {
+            input: "if (false) { 10 } else { 20 } ".into(),
+            expected: Box::new(20),
+        },
+        VMTestCase {
+            input: "if (1) { 10 }".into(),
+            expected: Box::new(10),
+        },
+        VMTestCase {
+            input: "if (1 < 2) { 10 }".into(),
+            expected: Box::new(10),
+        },
+        VMTestCase {
+            input: "if (1 < 2) { 10 } else { 20 }".into(),
+            expected: Box::new(10),
+        },
+        VMTestCase {
+            input: "if (1 > 2) { 10 } else { 20 }".into(),
+            expected: Box::new(20),
+        },
+        VMTestCase {
+            input: "if (1 > 2) { 10 }".into(),
+            expected: Box::new(Null),
+        },
+        VMTestCase {
+            input: "if (false) { 10 }".into(),
+            expected: Box::new(Null),
+        },
+        VMTestCase {
+            input: "if ((if (false) { 10 })) { 10 } else { 20 }".into(),
+            expected: Box::new(20),
         },
     ];
 

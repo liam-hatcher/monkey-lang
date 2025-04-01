@@ -2,7 +2,7 @@ use std::any::Any;
 
 use crate::{
     ast::Node,
-    code::{Instructions, Opcode, lookup_opcode_definition, make, read_operands},
+    code::{Instructions, InstructionsExt, Opcode, lookup_opcode_definition, make, read_operands},
     lexer::Lexer,
     object::{Object, ObjectType, ObjectValue},
     parser::Parser,
@@ -31,10 +31,16 @@ fn concat_instructions(instructions: Vec<Instructions>) -> Instructions {
 fn test_instructions(expected: &Vec<Instructions>, actual: Instructions) {
     let concatted = concat_instructions(expected.to_vec());
 
-    assert_eq!(actual.len(), concatted.len(), "wrong instructions length");
+    assert_eq!(
+        actual.len(),
+        concatted.len(),
+        "wrong instructions length,\n \t expected: {:?}\n \t got:      {:?}",
+        concatted.string(),
+        actual.string()
+    );
 
     for (i, instr) in concatted.iter().enumerate() {
-        assert_eq!(actual.get(i).unwrap(), instr, "");
+        assert_eq!(actual.get(i).unwrap(), instr, "instructions do not match");
     }
 }
 
@@ -244,6 +250,58 @@ fn test_boolean_expressions() {
             expected_instructions: vec![
                 make(Opcode::OpTrue, &[]),
                 make(Opcode::OpBang, &[]),
+                make(Opcode::OpPop, &[]),
+            ],
+        },
+    ];
+
+    run_compiler_tests(&tests);
+}
+
+#[test]
+fn test_conditionals() {
+    let tests = [
+        CompilerTestCase {
+            input: "if (true) { 10 }; 3333;".into(),
+            expected_constants: vec![Box::new(10), Box::new(3333)],
+            expected_instructions: vec![
+                // 0000
+                make(Opcode::OpTrue, &[]),
+                // 0001
+                make(Opcode::OpJumpNotTruthy, &[10]),
+                // 0004
+                make(Opcode::OpConstant, &[0]),
+                // 0007
+                make(Opcode::OpJump, &[11]),
+                // 0010
+                make(Opcode::OpNull, &[]),
+                // 0011
+                make(Opcode::OpPop, &[]),
+                // 0012
+                make(Opcode::OpConstant, &[1]),
+                // 0015
+                make(Opcode::OpPop, &[]),
+            ],
+        },
+        CompilerTestCase {
+            input: "if (true) { 10 } else { 20 }; 3333;".into(),
+            expected_constants: vec![Box::new(10), Box::new(20), Box::new(3333)],
+            expected_instructions: vec![
+                // 0000
+                make(Opcode::OpTrue, &[]),
+                // 0001
+                make(Opcode::OpJumpNotTruthy, &[10]),
+                // 0004
+                make(Opcode::OpConstant, &[0]),
+                // 0007
+                make(Opcode::OpJump, &[13]),
+                // 0010
+                make(Opcode::OpConstant, &[1]),
+                // 0013
+                make(Opcode::OpPop, &[]),
+                // 0014
+                make(Opcode::OpConstant, &[2]),
+                // 0017
                 make(Opcode::OpPop, &[]),
             ],
         },

@@ -1,5 +1,7 @@
 use std::fmt;
 
+use byteorder::{BigEndian, ByteOrder};
+
 use crate::{
     code::{Instructions, Opcode, read_u16},
     compiler::ByteCode,
@@ -159,6 +161,7 @@ impl MonkeyVM {
 
         match operand.get_value() {
             ObjectValue::Bool(b) => self.push(Box::new(Boolean { value: !b })),
+            ObjectValue::Null => self.push(Box::new(Boolean { value: true })),
             _ => self.push(Box::new(Boolean { value: false })),
         }
     }
@@ -175,6 +178,22 @@ impl MonkeyVM {
         };
 
         self.push(Box::new(Integer { value: -value }))
+    }
+
+    fn is_truthy(&self, obj: Box<dyn Object>) -> bool {
+        match obj.kind() {
+            ObjectType::Boolean => {
+                let ObjectValue::Bool(b) = obj.get_value() else {
+                    unreachable!()
+                };
+
+                return b;
+            }
+
+            ObjectType::Null => false,
+
+            _ => true,
+        }
     }
 
     pub fn run(&mut self) -> Result<(), VMError> {
@@ -218,6 +237,27 @@ impl MonkeyVM {
                 Opcode::OpBang => self.execute_bang_op()?,
 
                 Opcode::OpMinus => self.execute_minus_op()?,
+
+                Opcode::OpJumpNotTruthy => {
+                    let pos = BigEndian::read_u16(&self.instructions[ip + 1..]);
+                    ip += 2;
+
+                    let condition = self.pop();
+                    if !self.is_truthy(condition) {
+                        ip = pos as usize - 1;
+                    }
+                }
+
+                Opcode::OpJump => {
+                    let pos = BigEndian::read_u16(&self.instructions[ip + 1..]);
+                    ip = pos as usize - 1;
+                }
+
+                Opcode::OpNull => {
+                    self.push(Box::new(Null))?;
+                }
+
+                Opcode::OpNoop => unreachable!(),
             }
 
             ip += 1;
